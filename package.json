@@ -1,0 +1,27 @@
+{
+  "name": "kojimachi-kousai-2f-3d",
+  "private": true,
+  "version": "1.0.0",
+  "description": "麹町弘済ビルディング 2階（オリエントコーポレーション IT・システムグループ／リスク管理グループ）3D間取り再現モデル",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:standalone": "tsc --noEmit && vite build --mode standalone",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "build:docs": "npm run build:standalone && cp dist-standalone/index.html docs/index.html",
+    "shots": "node scripts/shoot.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "playwright-core": "^1.56.1",
+    "typescript": "5.9",
+    "vite": "^7.3.6",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

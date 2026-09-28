@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>麹町弘済ビル 2F 3D間取り</title>
+    <meta name="description" content="麹町弘済ビルディング 2階（オリエントコーポレーション IT・システムグループ／リスク管理グループ）の3D間取り再現モデル" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d3557'/%3E%3Cpath d='M6 9h20v4H20v10h-8V13H6z' fill='%23fff'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="viewport"></div>
+
+      <header id="topbar">
+        <div class="title">
+          <div class="t1">麹町弘済ビルディング <span class="fl">2F</span></div>
+          <div class="t2">オリエントコーポレーション　IT・システムグループ／リスク管理グループ</div>
+        </div>
+        <nav id="modes" role="tablist" aria-label="表示モード">
+          <button data-mode="orbit" class="on" role="tab">俯瞰</button>
+          <button data-mode="plan" role="tab">平面図</button>
+          <button data-mode="walk" role="tab">ウォークスルー</button>
+          <button data-mode="exterior" role="tab">外観</button>
+        </nav>
+      </header>
+
+      <button id="panelToggle" aria-label="パネルを開閉">☰</button>
+      <aside id="panel" aria-label="コントロールパネル">
+        <section>
+          <h3>視点プリセット</h3>
+          <div id="presets" class="chips"></div>
+        </section>
+        <section>
+          <h3>表示レイヤー</h3>
+          <div id="layers" class="toggles"></div>
+        </section>
+        <section>
+          <h3>日照（2026年9月28日）</h3>
+          <div class="sunrow">
+            <input id="time" type="range" min="6" max="18" step="0.25" value="10.5" aria-label="時刻" />
+            <output id="timeOut">10:30</output>
+          </div>
+          <label class="tg"><input type="checkbox" id="shadows" checked /><span>影を表示</span></label>
+        </section>
+        <section>
+          <h3>フロア概要</h3>
+          <table id="stats" class="stats"></table>
+        </section>
+        <section>
+          <h3>凡例</h3>
+          <div class="legend">
+            <span><i style="background: #3d7fd1"></i>IT・システムG</span>
+            <span><i style="background: #3f9e5a"></i>リスク管理G</span>
+            <span><i style="background: #e0a13a"></i>共用ラウンジ</span>
+            <span><i style="background: #b66ad1"></i>来客ゾーン</span>
+            <span><i style="background: #8a8f96"></i>ビル共用部（コア）</span>
+          </div>
+        </section>
+        <section class="btns">
+          <button id="shot">画像を保存</button>
+          <button id="csv">室面積表CSV</button>
+          <button id="about">出典・前提</button>
+        </section>
+      </aside>
+
+      <aside id="info" hidden>
+        <button class="close" aria-label="閉じる">×</button>
+        <div class="body"></div>
+      </aside>
+
+      <div id="walkui" hidden>
+        <div class="pad">
+          <button data-move="f" aria-label="前進">▲</button>
+          <button data-move="l" aria-label="左">◀</button>
+          <button data-move="b" aria-label="後退">▼</button>
+          <button data-move="r" aria-label="右">▶</button>
+        </div>
+        <div class="hint">W/A/S/D・矢印キーで移動／ドラッグで見回し／Shiftで早歩き</div>
+      </div>
+
+      <div id="mapbox"><div class="cap">ミニマップ（クリックで移動）</div></div>
+
+      <div id="compass" title="方位（概略）"><span>N</span></div>
+      <div id="hintbar">ドラッグ：回転　右ドラッグ：移動　ホイール：ズーム　クリック：詳細表示</div>
+
+      <div id="loading">
+        <div class="spinner"></div>
+        <div id="loadmsg">読み込み中…</div>
+      </div>
+
+      <div id="modal" hidden>
+        <div class="card">
+          <button class="close" aria-label="閉じる">×</button>
+          <div class="body"></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
