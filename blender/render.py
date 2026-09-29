@@ -5,9 +5,12 @@ Cycles の静止画・360° パノラマ（docs/GRAPHICS-PIPELINE.md §5）。
   .venv-blender/bin/python blender/render.py --shots all|id,id --quality preview|final [--samples N] [--scale S]
   .venv-blender/bin/python blender/render.py --list
 
-  出力：src/assets/renders/<id>.jpg（1920×1080）と <id>_thumb.jpg（480 px 幅）、
-        パノラマは pano_<場所>.jpg（4096×2048 正距円筒）と pano_<場所>_thumb.jpg、renders.json（部分実行でも追記・更新）。
-  中間の PNG は blender/out/renders/。
+  .venv-blender/bin/python blender/render.py --resave [--shots ...]   （PNG から JPEG を作り直すだけ）
+
+  出力：Web 版に同梱する縮小版 src/assets/renders/<id>.jpg（静止画 1600 px 幅、パノラマ 3072 px 幅）と
+        <id>_thumb.jpg（480 px 幅）、renders.json（部分実行でも追記・更新）。パノラマのファイル名は pano_<場所>.jpg。
+        final 品質では原寸（1920×1080、パノラマ 4096×2048）を docs/renders/ にも保存する。
+  中間の PNG（原寸）は blender/out/renders/。
 """
 
 import argparse
@@ -102,6 +105,10 @@ QUALITY = {
 STILL_SIZE = (1920, 1080)
 PANO_SIZE = (4096, 2048)
 THUMB_W = 480
+# Web 版（単一 HTML に data URI で埋め込む）の縮小幅と JPEG 品質
+WEB_STILL_W, WEB_STILL_Q = 1600, 85
+WEB_PANO_W, WEB_PANO_Q = 3072, 82
+ORIGINALS_DIR = C.ROOT / 'docs' / 'renders'
 #: 平面図：中心（three.js の x, y, z。南のバルコニーまで入るよう少し南寄り）と画像幅に写す範囲（m）
 PLAN_CENTER = (0.0, 0.0, 1.2)
 PLAN_WIDTH = 84.0
@@ -182,18 +189,42 @@ def setup_shot(h: C.SceneHandles, s: Shot, q: dict, samples: int, scale: float) 
     return {**info, 'w': rw, 'h': rh}
 
 
-def save_outputs(png: Path, s: Shot) -> tuple[str, str]:
-    """PNG → JPEG q90 と 480 px 幅のサムネイル"""
+def save_outputs(png: Path, s: Shot, original: bool) -> dict:
+    """PNG → Web 用の縮小 JPEG と 480 px 幅のサムネイル。original=True なら原寸 JPEG q92 を docs/renders/ にも保存"""
     from PIL import Image
 
     base = s.id.replace('pano-', 'pano_') if s.kind == 'pano' else s.id
     out = C.ensure_dir(C.RENDERS_DIR)
     im = Image.open(png).convert('RGB')
-    im.save(out / f'{base}.jpg', 'JPEG', quality=90, optimize=True, progressive=True, subsampling=0)
+    ww, wq = (WEB_PANO_W, WEB_PANO_Q) if s.kind == 'pano' else (WEB_STILL_W, WEB_STILL_Q)
+    web = im if im.width <= ww else im.resize((ww, round(im.height * ww / im.width)), Image.LANCZOS)
+    web.save(out / f'{base}.jpg', 'JPEG', quality=wq, optimize=True, progressive=True)
     tw = THUMB_W
     th = round(im.height * tw / im.width)
     im.resize((tw, th), Image.LANCZOS).save(out / f'{base}_thumb.jpg', 'JPEG', quality=88, optimize=True)
-    return f'{base}.jpg', f'{base}_thumb.jpg'
+    res = {'file': f'{base}.jpg', 'thumb': f'{base}_thumb.jpg', 'webW': web.width, 'webH': web.height}
+    if original:
+        im.save(C.ensure_dir(ORIGINALS_DIR) / f'{base}.jpg', 'JPEG', quality=92, optimize=True, progressive=True, subsampling=0)
+        res['original'] = f'docs/renders/{base}.jpg'
+    return res
+
+
+def resave(shots: list[Shot]) -> None:
+    """レンダーし直さずに、中間 PNG から JPEG と renders.json のファイル項目を作り直す"""
+    path = C.RENDERS_DIR / 'renders.json'
+    cur = {e['id']: e for e in json.loads(path.read_text(encoding='utf-8'))} if path.exists() else {}
+    entries = []
+    for s in shots:
+        png = C.OUT / 'renders' / f'{s.id}.png'
+        if s.id not in cur or not png.exists():
+            C.log(f'{s.id}: PNG または renders.json の項目がないので飛ばす')
+            continue
+        e = {k: v for k, v in cur[s.id].items() if k not in ('webW', 'webH', 'original')}
+        e.update(save_outputs(png, s, original=e.get('quality') == 'final'))
+        entries.append(e)
+        C.log(f'{s.id}: 保存し直し → {e["file"]}（{e["webW"]}×{e["webH"]}）')
+    if entries:
+        update_json(entries)
 
 
 def update_json(entries: list[dict]) -> Path:
@@ -217,6 +248,7 @@ def main() -> None:
     ap.add_argument('--samples', type=int, help='全ショット共通のサンプル数（既定は品質プリセット）')
     ap.add_argument('--scale', type=float, default=1.0, help='品質プリセットの解像度にさらに掛ける倍率')
     ap.add_argument('--list', action='store_true')
+    ap.add_argument('--resave', action='store_true', help='レンダーせず、中間 PNG から JPEG を作り直す')
     args = ap.parse_args(C.parse_args())
     if args.list:
         for s in SHOTS:
@@ -227,6 +259,9 @@ def main() -> None:
     if unknown:
         raise SystemExit(f'不明なショット: {unknown}（--list で一覧）')
     shots = [s for s in SHOTS if s.id in ids]
+    if args.resave:
+        resave(shots)
+        return
     # 同じバリアント・表示状態を続けて描くと永続データ（BVH）を使い回せる
     shots.sort(key=lambda s: (s.variant, s.hide, s.kind))
     q = QUALITY[args.quality]
@@ -239,10 +274,11 @@ def main() -> None:
         png = png_dir / f'{s.id}.png'
         C.log(f'{s.id}: {info["w"]}×{info["h"]}、{samples} spp、{s.variant}、EV {s.ev:+.1f} …')
         sec = C.render_to(png)
-        file, thumb = save_outputs(png, s)
+        saved = save_outputs(png, s, original=args.quality == 'final')
+        file = saved['file']
         entry = {
             'id': s.id, 'kind': 'pano' if s.kind == 'pano' else 'still', 'title': s.title, 'preset': s.preset,
-            'file': file, 'thumb': thumb, 'w': info.pop('w'), 'h': info.pop('h'),
+            **saved, 'w': info.pop('w'), 'h': info.pop('h'),
             'samples': samples, 'seconds': round(sec, 1),
             'sunHours': h.meta['sun'][C.VARIANTS[s.variant]['sun']]['hours'], 'note': s.note,
             'variant': s.variant, 'ev': s.ev, 'quality': args.quality, **info,
