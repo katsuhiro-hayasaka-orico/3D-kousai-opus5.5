@@ -25,8 +25,9 @@ node scripts/shoot.mjs http://localhost:5173/ shots '[{"eval":"__app.goPreset(\"
 ```
 
 - Chromium は `CHROME_PATH`、未指定なら `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`（SwiftShader でソフトウェア WebGL。初回ロードは約 10 秒）。
-- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`toggle(レイヤー, bool)`、`setSun(時)`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`exportScene()`。
-- 撮影結果は Read ツールで画像を見て確認する（`shots/` は gitignore 済み）。
+- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`toggle(レイヤー, bool)`、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`gfx()`、`exportScene()`。
+- 撮影結果は Read ツールで画像を見て確認する（`shots/` は gitignore 済み）。Blender のベイク・レンダー中は CPU が埋まるので、`nice` を付け、`W=1100 H=680` 程度に小さくして撮る。
+- URL に `?lmdebug=1` を付けると、ライトマップの代わりに UV 検証用の合成画像（室の輪郭・グリッド・壁面の向き）を貼る。
 
 ## アーキテクチャ
 
@@ -40,12 +41,15 @@ three.js 座標は **x = 東、y = 上、z = 南（北は -z）**、単位は m�
   - `presets.ts`：視点プリセット（walk は `[x, z, yaw, pitch]`、yaw = 0 で北向き）。
 - **壁は手書きしない**。`src/build/walls.ts` が室の辺から壁を集め、同一線上の重なりを壁種の優先度（RC > LGS > 可動 > フィルム > ガラス > 腰壁）で統合し、扉位置を開口として切り欠いて扉・枠・欄間を生成する。間取りの変更は `rooms.ts` の矩形・壁種・扉を編集する。
 - `src/build/` の各モジュールが生成を担う。
-  - `shell.ts`：床・柱・カーテンウォール・バルコニー・外構・他階ゴースト。
+  - `shell.ts`：床・柱・カーテンウォール・バルコニー・外構・周辺街区（`CITY_BLOCKS`、箱ごとに別メッシュ）。
+  - `upper.ts`：外観用の上階 3F〜12F（2F の躯体・軒・天井と照明を InstancedMesh で積む。家具・人物なし）と屋上。Blender へは書き出さない（Blender 側で独自に積む）。
   - `layout.ts`：家具・人物の配置。
   - `ceiling.ts`：天井設備（壁との干渉を自動回避）。
   - `overlays.ts`：分析オーバーレイ。
   - `protos.ts`：家具・人物のプロトタイプ。
-- `src/world.ts` がレイヤー（`LayerKey`：structure / furniture / people / ceiling / eaves / site / upper / zones …）ごとの Group を組み立て、集計値（`world.stats`）を返す。`src/main.ts` はモード（俯瞰／平面図／ウォークスルー／外観）、UI、ピック、ループ、`__app` を担当する。
+- `src/world.ts` がレイヤー（`LayerKey`：structure / furniture / people / ceiling / eaves / site / upper（周辺街区）/ floors（上階・屋上）/ zones …）ごとの Group を組み立て、集計値（`world.stats`）を返す。`src/main.ts` はモード（俯瞰／平面図／ウォークスルー／外観）、UI、ピック、ループ、`__app` を担当する。
+- `src/gfx/`：描画の強化。`lightmaps.ts`（ベイク GI の適用。上階の複製にも同じマテリアルを当てる）、`post.ts`（EffectComposer：MSAA・GTAO・選択的 Bloom・Neutral トーンマッピング・SMAA、画質 高／標準／軽量）、`bloom.ts`、`sky.ts`（Sky シェーダ＋PMREM）、`environment.ts`（モード別の背景・IBL・半球光）、`clearance.ts`（外観で建物を遮る街区を隠す）、`device.ts`。
+- `src/ui/gallery.ts`・`pano.ts`・`renders.ts`：Blender レンダーのギャラリーと 360° ビューア（`src/assets/renders/renders.json` を読む）。
 
 ### 描画の仕組み（`src/core/`）
 - `PB`（パーツビルダー、`geom.ts`）でジオメトリ＋**マテリアルキー**＋行列のパーツを組み立てる。
@@ -72,10 +76,20 @@ three.js 座標は **x = 東、y = 上、z = 南（北は -z）**、単位は m�
   ```bash
   uv venv --python 3.11 .venv-blender && uv pip install --python .venv-blender/bin/python bpy==4.5.14 Pillow
   ```
-  glTF 読み込み後の Blender 座標は (x, -z, y) になる。生成物の出力先は `src/assets/baked/`（ライトマップ・環境 HDR）と `src/assets/renders/`（Cycles 静止画・360°パノラマ）。
+  glTF 読み込み後の Blender 座標は (x, -z, y) になる。生成物の出力先は `src/assets/baked/`（ライトマップ・環境 HDR）と `src/assets/renders/`（Cycles 静止画・360°パノラマの Web 用縮小版）、final の原寸は `docs/renders/`。
+  ```bash
+  .venv-blender/bin/python blender/verify.py                               # シーン構築・UV・太陽方位などの検証
+  .venv-blender/bin/python blender/bake_lightmaps.py --quality preview     # ライトマップ＋室内 HDR（数分）
+  .venv-blender/bin/python blender/render.py --shots it-south,soc --quality preview   # --list で一覧
+  .venv-blender/bin/python blender/render.py --resave                      # 中間 PNG から JPEG を作り直す
+  bash blender/run_final.sh [all|bake|render]                              # 最終品質（数時間。ログは blender/out/）
+  ```
+  詳細（照明の校正、材質規則、所要時間）は `blender/README.md`。
 
 ## 変更時の注意
 
 - README の「主な数値」と「室一覧」はモデルの集計値（`__app.stats()`）と一致させている。間取り・家具を変えたら確認して更新する。
 - `docs/index.html`（単一 HTML の配布物）と `docs/images/`（README 用スクリーンショット）はコミットしている生成物。見た目を変えたら `npm run build:docs` と撮影をやり直す。
 - 生成物・作業物は gitignore 済み：`dist/`、`dist-standalone/`、`shots/`、`blender/cache/`、`blender/out/`。
+- ベイク・レンダーは `blender/cache/scene.glb` を入力にする。床・天井・壁のジオメトリを変えたら書き出し → 再ベイクが必要（hash 不一致だとブラウザはライトマップを使わない）。家具・照明器具を変えたらレンダーのやり直しが必要。
+- 周辺街区のマテリアル名 `ghost.city` と glTF の最上位ノード名（`L_*`）は Blender 側が参照する契約なので変えない。

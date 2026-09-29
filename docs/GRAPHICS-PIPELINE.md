@@ -30,7 +30,9 @@
 
 - 開発サーバー起動中に `node scripts/export-scene.mjs` → `blender/cache/scene.glb` と `meta.json`。
 - glTF の最上位ノード：`L_structure, L_eaves, L_ceiling, L_furniture, L_people, L_site, L_upper`。
-  - `L_upper` は他階のゴースト（半透明の箱）。Blender では非表示にし、2F を複製した本物の上階に置き換える。
+  - `L_upper` は周辺街区の箱（マテリアル `ghost.city`、箱ごとに別メッシュ。旧版は 1 メッシュ）。Blender は連結成分ごとに
+    `city.<n>` として実体化し、外装シェーダ（階 3.8 m・スパン 1.5 m の格子）を当てる。
+  - ブラウザの外観用の上階 3F〜12F と屋上（`floors` レイヤー）は書き出さない。Blender は 2F のコレクションインスタンスで独自に積む。
 - メッシュ名：静的メッシュは `structure:<マテリアルキー>` など、家具・人物は `<プロト名>:<マテリアルキー>[#色]`。
 - マテリアル名は three.js 側のキー（例 `floor.carpetIT`, `glass.cw`, `light.panel`, `screen.video2`, `person.top#2f3b52`）。
   `#rrggbb` はインスタンス色（人物の服・肌、樹木の葉）で分割した派生マテリアル。
@@ -62,7 +64,12 @@
   }
   ```
   画素値 p（sRGB をデコードした線形 0〜1）× `scale` = Blender の Diffuse ライトパス値。
-  three.js では `lightMapIntensity = scale × π × gain`（three の lightMap は放射照度扱いで BRDF_Lambert の 1/π が掛かるため）。
+  three.js では `lightMapIntensity = scale × π × exposure × gain`（three の lightMap は放射照度扱いで BRDF_Lambert の 1/π が掛かるため）。
+  `exposure` は `bake.atlases.floor.stats.meanLum`（床の平均輝度。無ければ壁 → 天井）を目標値に合わせる自動露出、
+  `gain` は UI の「GI 強度」。
+  `bake.atlases.<atlas>` には `samples`・`seconds`・`resolutionScale`・`quality`（preview／final）と
+  `stats`（`validFraction`・`median`・`meanLum`・`p99_5`・`max`・`clippedFraction`・`bytes`）が入る。
+  最上位の `quality` はすべてのアトラスが final のときだけ `final`。
 - ブラウザは `hash` が一致したときだけ適用する（レイアウトを変えたら再ベイクが必要）。
 
 ## 4. 室内 HDR 環境マップ（任意）
@@ -72,19 +79,31 @@
 
 ## 5. Cycles レンダー（静止画・360°）
 
-- `src/assets/renders/<id>.jpg`（1920×1080）、`<id>_thumb.jpg`（480×270）、`pano_<id>.jpg`（4096×2048 正距円筒）。
+- レンダー解像度は静止画 1920×1080、パノラマ 4096×2048（正距円筒）。ブラウザに同梱するのは縮小版で、
+  `src/assets/renders/<id>.jpg`（静止画 1600 px 幅）、`<id>_thumb.jpg`（480 px 幅）、
+  パノラマは id が `pano-<場所>`、ファイルが `pano_<場所>.jpg`（3072 px 幅）。
+  final 品質の原寸 JPEG は `docs/renders/`（README 用・ダウンロード用）。
 - `renders.json`：
   ```json
   [ { "id": "it-south", "kind": "still", "title": "IT・システムG 執務エリア（南）", "preset": "IT 執務（南）",
-      "file": "it-south.jpg", "thumb": "it-south_thumb.jpg", "w": 1920, "h": 1080,
-      "samples": 256, "seconds": 812, "sunHours": 10.5, "note": "" } ]
+      "file": "it-south.jpg", "thumb": "it-south_thumb.jpg", "webW": 1600, "webH": 900,
+      "original": "docs/renders/it-south.jpg", "w": 1920, "h": 1080,
+      "samples": 160, "seconds": 812, "sunHours": 10.5, "note": "", "variant": "day", "ev": 1.6, "quality": "final",
+      "camera": { "pos": [13.9, 1.55, 10.5], "target": [23.2, 0.75, 14.2], "fov": 62, "twoPoint": true, "shiftY": -0.067 } } ]
   ```
-  `preset` は `src/data/presets.ts` の名前（ブラウザの「3Dでこの視点へ」に使う）。パノラマは `"kind": "pano"`。
+  `w`・`h` はレンダー解像度、`webW`・`webH` は同梱画像の寸法。`original` は final のときだけ。
+  `preset` は `src/data/presets.ts` の名前（ブラウザの「3Dでこの視点へ」に使う）。パノラマは `"kind": "pano"` で、
+  `pos`・`heading`・`clearance`・`mapping` を持つ。外観で視線を遮る街区を隠したショットは `hiddenCityBlocks`。
 - カメラは `meta.json` の `cameras`（three.js 座標の pos/target/fov〔縦画角〕）を変換して使う。
 
 ## 6. ブラウザ側
 
 - `src/gfx/`：ライトマップ適用（ハッシュ照合・フォールバック）、ポストエフェクト（GTAO・Bloom・SMAA）、空（Sky シェーダ）。
 - `src/ui/gallery.ts`・`src/ui/pano.ts`：フォトリアルギャラリーと 360° ビューア。
-- 画質プリセット：高（GTAO＋Bloom＋SMAA）／標準（Bloom＋SMAA）／軽量（なし）。モバイルは標準が既定。
+- 画質プリセット：高（MSAA＋GTAO＋Bloom＋SMAA）／標準（Bloom＋SMAA）／軽量（ポストなし）。モバイルは標準が既定。
+  トーンマッピングは Neutral（OutputPass）。単色背景は、トーンマッピング後に指定色になるよう逆算した色を使う。
+- ライトマップはシェーダーで LED 成分と天空成分に分け、時刻スライダーに応じて天空成分だけを減らす（夕方・夜）。
+  室内の IBL・半球光も机上照度の内訳（`AMBIENT_SPLIT`：LED 0.46・天空 0.11・日射 0.43）で同様に減らす。
+  太陽の直達光は DirectionalLight＋シャドウマップでリアルタイムに与える。
+- 外観では建物の外接箱の 27 点へカメラから引いた線分に当たる街区を隠す（Blender の撮影と同じ判定、`gfx/clearance.ts`）。
 - アセットがなくても従来どおり動作する（すべて任意読み込み）。
