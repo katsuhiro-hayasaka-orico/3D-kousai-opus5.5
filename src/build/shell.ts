@@ -22,7 +22,7 @@ export function buildFloors(pb: PB): void {
   for (const r of ALL_ROOMS) {
     const [x0, z0, x1, z1] = r.rect;
     const y = r.kind === 'ev' || r.kind === 'shaft' ? 0.002 : 0;
-    pb.add(floorRectGeo(x0, z0, x1, z1, y, UV_SCALE[r.floor] ?? 2), r.floor, new THREE.Matrix4(), true);
+    pb.add(floorRectGeo(x0, z0, x1, z1, y, UV_SCALE[r.floor] ?? 2), r.floor, new THREE.Matrix4(), true, 'floor');
   }
   // 躯体スラブ（厚み表現）
   pb.boxX('floor.slabEdge', PLATE.x0, -0.32, PLATE.z0, PLATE.x1, -0.005, PLATE.z1);
@@ -189,7 +189,7 @@ function buildBalcony(pb: PB, b: Balcony, y: number): void {
   const d = CW.balcony;
   const [x0, z0, x1, z1] = balconyRect(b, d);
   pb.boxX('facade.panel', x0, y - 0.3, z0, x1, y, z1);
-  pb.add(floorRectGeo(x0 + 0.05, z0 + 0.05, x1 - 0.05, z1 - 0.05, y + 0.06, 2), 'floor.deck', new THREE.Matrix4(), true);
+  pb.add(floorRectGeo(x0 + 0.05, z0 + 0.05, x1 - 0.05, z1 - 0.05, y + 0.06, 2), 'floor.deck', new THREE.Matrix4(), true, 'floor');
   pb.boxX('floor.concrete', x0, y, z0, x1, y + 0.05, z1);
   // 手すり：外側の辺と両端
   const railH = 1.1;

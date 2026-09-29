@@ -22,6 +22,7 @@ import {
 import { Walkers } from './build/walkers';
 import { DoorInfo, buildWalls, wallColliders } from './build/walls';
 import { roomPlateTexture } from './core/textures';
+import { lmHash, packWallCharts } from './core/lightmap';
 import { ALL_ROOMS, TENANT_ROOMS, roomArea } from './data/rooms';
 import { COLUMN, CORE, PLATE } from './data/spec';
 
@@ -64,6 +65,8 @@ export interface World {
   acCenters: { id: number; x: number; z: number; units: number }[];
   axes: { name: string; x: number; z: number }[];
   pickables: THREE.Object3D[];
+  /** ライトマップ対象メッシュとレイアウトハッシュ */
+  lightmap: { meshes: THREE.Mesh[]; hash: string; wallDensity: number; wallFill: number };
 }
 
 /** 会議室等の扉脇に室名サイン（H1550） */
@@ -79,7 +82,9 @@ function buildRoomPlates(doors: DoorInfo[]): THREE.Group {
     const sub = d.room.cap ? `${d.room.cap}名` : d.room.group === 'core' ? '' : d.room.id;
     const mat = new THREE.MeshStandardMaterial({ map: roomPlateTexture(d.room.name.replace(/（.*?）/g, ''), sub), roughness: 0.5, emissive: 0xffffff, emissiveIntensity: 0.12 });
     mat.emissiveMap = mat.map;
+    mat.name = `plate.${d.room.id}`;
     const m = new THREE.Mesh(geo, mat);
+    m.name = `plate:${d.room.id}`;
     const t = d.wallType === 'rc' ? 0.1 : d.wallType === 'glass' || d.wallType === 'film' ? 0.012 : 0.062;
     const along = d.b + 0.24;
     const out = -1; // 室外側
@@ -115,7 +120,8 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
   progress('壁・建具を生成中…');
   const walls = buildWalls();
   sb.parts.push(...walls.pb.parts);
-  layers.structure.add(buildStatic(sb, 'structure'));
+  const lmPack = packWallCharts(sb.parts);
+  layers.structure.add(buildStatic(sb, 'structure', { lightmap: true }));
   layers.structure.add(buildRoomPlates(walls.doors));
 
   const eb = new PB();
@@ -132,7 +138,7 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
   // ---- 天井設備 ----
   progress('天井設備（照明・空調・Wi-Fi）を配置中…');
   const ceil = buildCeiling(I, walls.pieces);
-  layers.ceiling.add(buildStatic(ceil.pb, 'ceilingPlanes', { cast: false }));
+  layers.ceiling.add(buildStatic(ceil.pb, 'ceilingPlanes', { cast: false, lightmap: true }));
 
   // ---- 外構・他階 ----
   progress('外観・周辺を生成中…');
@@ -212,5 +218,12 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
   stats.meetingSeats = meetingCap;
   stats.present += walkers.count;
 
-  return { layers, walkers, obstacles, colliders, stats, acCenters: acO.centers, axes: planL.axes, pickables };
+  const lmMeshes: THREE.Mesh[] = [];
+  for (const k of ['structure', 'ceiling'] as LayerKey[])
+    layers[k].traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && o.userData.lmAtlas) lmMeshes.push(o as THREE.Mesh);
+    });
+  const lightmap = { meshes: lmMeshes, hash: lmHash(lmMeshes), wallDensity: lmPack.density, wallFill: lmPack.fill };
+
+  return { layers, walkers, obstacles, colliders, stats, acCenters: acO.centers, axes: planL.axes, pickables, lightmap };
 }

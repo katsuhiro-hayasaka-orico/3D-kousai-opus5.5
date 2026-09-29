@@ -61,7 +61,7 @@ export function buildCeiling(I: Instancer, pieces: WallPiece[]): CeilingResult {
   for (const r of [...CORE_ROOMS, ...TENANT_ROOMS]) {
     if (r.kind === 'stair' || r.kind === 'ev' || r.kind === 'shaft') continue;
     const [x0, z0, x1, z1] = r.rect;
-    pb.add(floorRectGeo(x0, z0, x1, z1, y, 1.28, true), 'ceiling', new THREE.Matrix4(), true);
+    pb.add(floorRectGeo(x0, z0, x1, z1, y, 1.28, true), 'ceiling', new THREE.Matrix4(), true, 'ceil');
   }
 
   // --- LED ライン照明（1.6m ピッチ、E-W 方向） ---

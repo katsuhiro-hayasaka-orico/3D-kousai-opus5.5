@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { M } from './materials';
+import { LmAtlas, lmAtlasFor, writeUV1 } from './lightmap';
 
 /** 1 パーツ = ジオメトリ + マテリアルキー + ローカル行列 */
 export interface Part {
@@ -8,6 +9,10 @@ export interface Part {
   mat: string;
   m: THREE.Matrix4;
   noShadow?: boolean;
+  /** 平面投影でライトマップを受ける面（床・天井） */
+  lm?: LmAtlas;
+  /** パッキング済みライトマップ UV（非インデックス頂点順） */
+  uv1?: Float32Array;
 }
 
 const geoCache = new Map<string, THREE.BufferGeometry>();
@@ -78,8 +83,8 @@ export class PB {
     return this;
   }
 
-  add(geo: THREE.BufferGeometry, mat: string, local: THREE.Matrix4, noShadow = false): this {
-    this.parts.push({ geo, mat, m: this.top.clone().multiply(local), noShadow });
+  add(geo: THREE.BufferGeometry, mat: string, local: THREE.Matrix4, noShadow = false, lm?: LmAtlas): this {
+    this.parts.push({ geo, mat, m: this.top.clone().multiply(local), noShadow, lm });
     return this;
   }
 
@@ -138,12 +143,13 @@ function normalizeGeo(g: THREE.BufferGeometry): THREE.BufferGeometry {
   return out;
 }
 
-/** パーツをマテリアルごとに 1 ジオメトリへマージ */
-export function mergeByMaterial(parts: Part[]): Map<string, { geo: THREE.BufferGeometry; noShadow: boolean }> {
+/** パーツをマテリアルごとに 1 ジオメトリへマージ（lightmap=true なら uv1 を付与） */
+export function mergeByMaterial(parts: Part[], lightmap = false): Map<string, { geo: THREE.BufferGeometry; noShadow: boolean }> {
   const byMat = new Map<string, { geos: THREE.BufferGeometry[]; noShadow: boolean }>();
   for (const p of parts) {
     const g = normalizeGeo(p.geo);
     g.applyMatrix4(p.m);
+    if (lightmap) writeUV1(g, p, lmAtlasFor(p.mat));
     let e = byMat.get(p.mat);
     if (!e) {
       e = { geos: [], noShadow: true };
@@ -165,10 +171,10 @@ export function mergeByMaterial(parts: Part[]): Map<string, { geo: THREE.BufferG
 }
 
 /** 静的ジオメトリ（建築躯体など）を Mesh 群にする */
-export function buildStatic(pb: PB, name: string, opts: { cast?: boolean; receive?: boolean } = {}): THREE.Group {
+export function buildStatic(pb: PB, name: string, opts: { cast?: boolean; receive?: boolean; lightmap?: boolean } = {}): THREE.Group {
   const grp = new THREE.Group();
   grp.name = name;
-  for (const [mk, { geo, noShadow }] of mergeByMaterial(pb.parts)) {
+  for (const [mk, { geo, noShadow }] of mergeByMaterial(pb.parts, !!opts.lightmap)) {
     const mat = M(mk);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = `${name}:${mk}`;
@@ -177,6 +183,11 @@ export function buildStatic(pb: PB, name: string, opts: { cast?: boolean; receiv
     mesh.receiveShadow = opts.receive ?? true;
     if (isGlass) mesh.renderOrder = 2;
     mesh.userData.matKey = mk;
+    if (opts.lightmap) {
+      const atlas = lmAtlasFor(mk);
+      if (atlas) mesh.userData.lmAtlas = atlas;
+      else geo.deleteAttribute('uv1');
+    }
     grp.add(mesh);
   }
   return grp;

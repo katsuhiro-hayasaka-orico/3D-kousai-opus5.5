@@ -5,3 +5,6 @@ dist/
 .DS_Store
 shots/
 dist-standalone/
+.venv-blender/
+blender/cache/
+blender/out/

@@ -75,17 +75,20 @@ const HAIR = [0x1a1512, 0x2e231b, 0x121212, 0x3b2c20];
 const TOPS = [0xf5f5f2, 0xbcd0e6, 0x2f3b52, 0x4a4f57, 0x1f2a3a, 0xe9e1d3, 0x5b6f8f];
 const BOTTOMS = [0x1f2633, 0x2b2b2e, 0x3a3f47, 0x5a5f66, 0x7d7466];
 
-function std(color: number, rough = 0.9): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color, roughness: rough });
+function std(color: number, rough = 0.9, key = 'person.misc'): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color, roughness: rough });
+  // Blender 書き出し時にマテリアル種別を判別できるよう「キー#色」で命名
+  m.name = `${key}#${color.toString(16).padStart(6, '0')}`;
+  return m;
 }
 
 function makeFigure(rng: Rng): { root: THREE.Group; legs: THREE.Object3D[]; arms: THREE.Object3D[] } {
   const root = new THREE.Group();
-  const skin = std(rng.pick(SKIN), 0.7);
-  const hair = std(rng.pick(HAIR));
-  const top = std(rng.pick(TOPS), 0.95);
-  const bot = std(rng.pick(BOTTOMS), 0.95);
-  const shoe = std(0x1e1e1f, 0.6);
+  const skin = std(rng.pick(SKIN), 0.7, 'person.skin');
+  const hair = std(rng.pick(HAIR), 0.9, 'person.hair');
+  const top = std(rng.pick(TOPS), 0.95, 'person.top');
+  const bot = std(rng.pick(BOTTOMS), 0.95, 'person.bottom');
+  const shoe = std(0x1e1e1f, 0.6, 'person.shoe');
   const mesh = (g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) => {
     const o = new THREE.Mesh(g, m);
     o.position.set(x, y, z);
@@ -97,7 +100,7 @@ function makeFigure(rng: Rng): { root: THREE.Group; legs: THREE.Object3D[]; arms
   root.add(mesh(new THREE.SphereGeometry(0.17, 14, 10), bot, 0, hipY + 0.02, 0, 1, 0.6, 0.8));
   root.add(mesh(new THREE.CapsuleGeometry(0.15, 0.3, 4, 12), top, 0, hipY + 0.33, 0, 1.12, 1, 0.72));
   root.add(mesh(new THREE.SphereGeometry(0.155, 14, 10), top, 0, hipY + 0.47, 0, 1.3, 0.5, 0.72));
-  for (const s of [-1, 1]) root.add(mesh(new THREE.SphereGeometry(0.011, 8, 6), std(0x141414, 0.3), s * 0.032, hipY + 0.732, -0.088));
+  for (const s of [-1, 1]) root.add(mesh(new THREE.SphereGeometry(0.011, 8, 6), std(0x141414, 0.3, 'person.eye'), s * 0.032, hipY + 0.732, -0.088));
   root.add(mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.08, 10), skin, 0, hipY + 0.58, 0));
   root.add(mesh(new THREE.SphereGeometry(0.1, 16, 12), skin, 0, hipY + 0.72, 0, 0.9, 1.05, 0.95));
   root.add(mesh(new THREE.SphereGeometry(0.104, 16, 12), hair, 0, hipY + 0.75, 0.02, 0.93, 0.85, 0.96));
