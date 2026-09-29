@@ -8,3 +8,4 @@ dist-standalone/
 .venv-blender/
 blender/cache/
 blender/out/
+__pycache__/
