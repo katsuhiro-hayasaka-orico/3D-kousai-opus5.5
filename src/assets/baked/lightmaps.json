@@ -11,13 +11,13 @@
       "file": "lm_ceil.webp",
       "w": 4096,
       "h": 2048,
-      "scale": 0.35371
+      "scale": 0.35115
     },
     "wall": {
       "file": "lm_wall.webp",
       "w": 4096,
       "h": 4096,
-      "scale": 0.65197
+      "scale": 0.65121
     }
   },
   "encoding": "srgb8",
@@ -44,52 +44,52 @@
         }
       },
       "ceil": {
-        "samples": 16,
-        "seconds": 90.7,
-        "resolutionScale": 0.5,
-        "quality": "preview",
+        "samples": 128,
+        "seconds": 3629.1,
+        "resolutionScale": 1.0,
+        "quality": "final",
         "stats": {
-          "validFraction": 0.901,
+          "validFraction": 0.9007,
           "median": [
             0.0615,
-            0.0608,
-            0.05
+            0.0605,
+            0.0494
           ],
-          "meanLum": 0.0624,
-          "p99_5": 0.3537,
-          "max": 1.2299,
+          "meanLum": 0.0632,
+          "p99_5": 0.3511,
+          "max": 1.1311,
           "clippedFraction": 0.005,
-          "bytes": 282444
+          "bytes": 276000
         }
       },
       "wall": {
-        "samples": 16,
-        "seconds": 161.5,
-        "resolutionScale": 0.5,
-        "quality": "preview",
+        "samples": 128,
+        "seconds": 4847.4,
+        "resolutionScale": 1.0,
+        "quality": "final",
         "stats": {
-          "validFraction": 0.9201,
+          "validFraction": 0.9202,
           "median": [
-            0.0348,
-            0.0329,
-            0.0281
+            0.0526,
+            0.0491,
+            0.0413
           ],
-          "meanLum": 0.067,
-          "p99_5": 0.652,
-          "max": 5.7545,
+          "meanLum": 0.0707,
+          "p99_5": 0.6512,
+          "max": 6.0055,
           "clippedFraction": 0.005,
-          "bytes": 443910
+          "bytes": 443072
         }
       }
     },
     "blender": "4.5.14",
-    "samples": 16,
-    "seconds": 327.1,
+    "samples": 128,
+    "seconds": 11069.6,
     "denoise": "OIDN",
     "world": "Nishita 天空（10:30 の分布、太陽ディスクなし）＋室内照明。太陽ランプなし。周辺街区（概略の箱）は天空光を遮る",
     "ledRadiance": 14.0
   },
-  "quality": "preview",
+  "quality": "final",
   "env": {
     "file": "env_interior.hdr",
     "w": 1024,
@@ -101,9 +101,9 @@
     ],
     "variant": "day",
     "sunHours": 10.5,
-    "samples": 64,
-    "seconds": 112.7,
+    "samples": 256,
+    "seconds": 506.4,
     "mapping": "three.js equirectUv（u=0.5 が +X 東、u=0.75 が +Z 南、上端が天頂）",
-    "mean": 0.3097
+    "mean": 0.3095
   }
 }
