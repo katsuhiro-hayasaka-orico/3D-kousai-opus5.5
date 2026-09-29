@@ -102,6 +102,7 @@ scene.add(labels.group);
 // ポストエフェクト（画質プリセット）
 const post = new PostFX(renderer, scene, persp);
 post.setQuality(initialQuality());
+lighting.setPostToneMapping(post.quality !== 'low');
 
 /** AO の効き（m）。俯瞰は広め、室内は接地感が出る程度に */
 const AO_BY_MODE: Record<Mode, AOParams> = {
@@ -178,7 +179,11 @@ function applyGI(on: boolean): void {
   lighting.setDaylight(lightmaps.ambientDaylight);
   syncInteriorExposure();
   const input = toggles.gi.input;
-  if (input) input.disabled = !lightmaps.available;
+  if (input) {
+    input.disabled = !lightmaps.available;
+    // 使えないときはチェックを外して見せる（設定値 toggles.gi.on は保持）
+    input.checked = lightmaps.available && toggles.gi.on;
+  }
   $<HTMLInputElement>('#giGain').disabled = !lightmaps.available;
   renderGfxNote();
 }
@@ -203,6 +208,7 @@ function renderGfxNote(): void {
 
 function setQuality(q: Quality): void {
   post.setQuality(q);
+  lighting.setPostToneMapping(q !== 'low');
   saveQuality(q);
   document.querySelectorAll<HTMLButtonElement>('#quality button').forEach((b) => b.classList.toggle('on', b.dataset.q === q));
 }

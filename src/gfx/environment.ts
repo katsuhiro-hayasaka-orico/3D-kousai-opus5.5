@@ -46,6 +46,35 @@ function meanLuminance(tex: THREE.DataTexture): number {
   return wsum > 0 ? sum / wsum : 0;
 }
 
+/** Khronos PBR Neutral（three.js の NeutralToneMapping と同じ式）を線形 RGB に掛ける */
+function neutral(c: number[]): number[] {
+  const start = 0.8 - 0.04;
+  const desat = 0.15;
+  const x = Math.min(...c);
+  const offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+  const v = c.map((k) => k - offset);
+  const peak = Math.max(...v);
+  if (peak < start) return v;
+  const d = 1 - start;
+  const np = 1 - (d * d) / (peak + d - start);
+  const g = 1 - 1 / (desat * (peak - np) + 1);
+  return v.map((k) => (k * np) / peak + (np - (k * np) / peak) * g);
+}
+
+/**
+ * 単色背景は、ポストエフェクト経由（OutputPass でトーンマッピング）でも直接描画（クリア色はトーンマッピングされない）
+ * でも同じ色に見えるよう、トーンマッピング後に target になる色を反復で求める
+ */
+function preToneMapped(target: THREE.Color): THREE.Color {
+  const t = [target.r, target.g, target.b];
+  const c = [...t];
+  for (let i = 0; i < 40; i++) {
+    const n = neutral(c);
+    for (let k = 0; k < 3; k++) c[k] = Math.max(0, c[k] + (t[k] - n[k]));
+  }
+  return new THREE.Color(c[0], c[1], c[2]);
+}
+
 interface Look {
   background: THREE.Color | THREE.Texture;
   backgroundIntensity: number;
@@ -68,6 +97,10 @@ export class Lighting {
   private daylight = 1;
   private orbitBg = new THREE.Color(0xe4e8ec);
   private planBg = new THREE.Color(0xf4f5f6);
+  private orbitBgTM = preToneMapped(this.orbitBg);
+  private planBgTM = preToneMapped(this.planBg);
+  /** 画面がトーンマッピングのポストパスを通るか（画質「軽量」では通らない） */
+  private toneMappedBg = true;
   /** 室内 HDR の有無と読み込み状態（UI 表示用） */
   interiorNote = '';
 
@@ -121,6 +154,12 @@ export class Lighting {
     this.apply();
   }
 
+  /** ポストエフェクト（OutputPass のトーンマッピング）を通すかどうか。単色背景の補正を切り替える */
+  setPostToneMapping(on: boolean): void {
+    this.toneMappedBg = on;
+    this.apply();
+  }
+
   setSun(dir: THREE.Vector3): void {
     this.sky.setSun(dir);
   }
@@ -142,7 +181,7 @@ export class Lighting {
     const hemiK = this.interiorEnv ? 0.3 : 0.75 * giHemi;
     switch (this.mode) {
       case 'plan':
-        return { background: this.planBg, backgroundIntensity: 1, environment: this.roomEnv, environmentIntensity: 0.5, hemi: 0.75 * giHemi };
+        return { background: this.toneMappedBg ? this.planBgTM : this.planBg, backgroundIntensity: 1, environment: this.roomEnv, environmentIntensity: 0.5, hemi: 0.75 * giHemi };
       case 'walk': {
         const day = this.gi ? this.daylight : 1;
         return {
@@ -164,7 +203,7 @@ export class Lighting {
       default:
         // 俯瞰は外構も写るので、室内の露出のままだと屋外が白飛びする。室内 HDR は半分に抑え、半球光で補う
         return {
-          background: this.orbitBg,
+          background: this.toneMappedBg ? this.orbitBgTM : this.orbitBg,
           backgroundIntensity: 1,
           environment: interior,
           environmentIntensity: this.interiorEnv ? envK * 0.5 : envK,

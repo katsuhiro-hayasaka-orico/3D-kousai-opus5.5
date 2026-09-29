@@ -24,8 +24,6 @@ export class PanoViewer {
   private pinch: { d: number; fov: number } | null = null;
   private tex: THREE.Texture | null = null;
   private token = 0;
-  /** 閉じたときに呼ばれる（元のモードへ戻す） */
-  onClose: () => void = () => {};
 
   constructor(
     parent: HTMLElement,
@@ -179,7 +177,6 @@ export class PanoViewer {
     this.showTexture(null);
     this.pointers.clear();
     this.pinch = null;
-    this.onClose();
   }
 
   resize(w: number, h: number): void {
