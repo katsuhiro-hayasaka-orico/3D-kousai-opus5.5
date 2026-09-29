@@ -36,15 +36,16 @@ $PY blender/verify.py                              # 向き・位置・天空光
 $PY blender/calibrate.py                           # 照度の実測（約 1 分）
 
 $PY blender/bake_lightmaps.py --quality preview    # ライトマップ（半分の解像度・16 spp）＋ env_interior.hdr（8〜12 分）
-$PY blender/bake_lightmaps.py --quality final      # 最終品質（約 3 時間）
+$PY blender/bake_lightmaps.py --quality final      # 最終品質（約 4 時間）
 $PY blender/bake_lightmaps.py --quality final --atlases wall --no-env   # 一部だけ焼き直す
 
 $PY blender/render.py --list                       # ショット一覧
 $PY blender/render.py --shots it-south,soc --quality preview
-$PY blender/render.py --shots all --quality final   # 約 7.5 時間
-$PY blender/render.py --shots ext-se-day --quality final --samples 256 --scale 0.5
+$PY blender/render.py --shots all --quality final   # 約 13〜14 時間
+$PY blender/render.py --shots ext-se-day --quality final --samples 256 --scale 0.5   # 試し描き（原寸は保存しない）
+$PY blender/render.py --resave                     # 中間 PNG から JPEG・サムネイルを作り直す（縮小幅を変えたときなど）
 
-bash blender/run_final.sh                          # 最終品質の一括実行（約 10 時間、ログは blender/out/*.log）
+bash blender/run_final.sh                          # 最終品質の一括実行（約 18 時間、ログは blender/out/*.log）
 ```
 
 - `--samples N`：サンプル数を上書き。`--scale S`：解像度倍率（`render.py` は品質プリセットの解像度にさらに掛ける。
@@ -77,10 +78,14 @@ bash blender/run_final.sh                          # 最終品質の一括実行
 
 ### 静止画・パノラマ `src/assets/renders/`
 
-- 静止画 `<id>.jpg`（1920×1080、JPEG 品質 90）と `<id>_thumb.jpg`（480×270）。
-- パノラマ `pano_<場所>.jpg`（4096×2048 正距円筒）と `pano_<場所>_thumb.jpg`（480×240）。`renders.json` の `id` は `pano-<場所>`
+- レンダー解像度は静止画 1920×1080、パノラマ 4096×2048（正距円筒）。ここに置くのはブラウザに同梱する縮小版で、
+  静止画 `<id>.jpg`（1600 px 幅、JPEG 品質 85）と `<id>_thumb.jpg`（480×270）。
+- パノラマ `pano_<場所>.jpg`（3072 px 幅、品質 82）と `pano_<場所>_thumb.jpg`（480×240）。`renders.json` の `id` は `pano-<場所>`
   （静止画の `id` と重ならないように）。画像中央 = `heading`（北から時計回りの方位、プリセットの向き）、右へ時計回り、上端 = 天頂。
-- `renders.json` は契約の項目（`id, kind, title, preset, file, thumb, w, h, samples, seconds, sunHours, note`）に加えて
+- final 品質を原寸（`--scale 1`）で描いたときだけ、原寸の JPEG（品質 92、4:4:4）を `docs/renders/<id>.jpg` にも保存する
+  （README 用・ダウンロード用）。中間の PNG は `blender/out/renders/`。
+- `renders.json` は契約の項目（`id, kind, title, preset, file, thumb, w, h, samples, seconds, sunHours, note`）と
+  `webW`・`webH`（同梱画像の寸法。`w`・`h` はレンダー解像度）、`original`（原寸を保存したときのパス）に加えて
   `variant`・`ev`・`quality`、静止画は `camera`（three.js の pos/target/fov と 2 点透視のシフト量）、
   パノラマは `pos`・`heading`・`clearance`、平面図は `ortho`（中心・幅・高さ m、上 = 北）を持つ。
 
@@ -267,19 +272,16 @@ Filter Glossy 1.0、永続データ（同じバリアントのショットを続
 | `ext-se-day`（同） | 354 秒 | 24 分 |
 | `pano-it-south`（4096×2048、48 spp） | 349 秒 | 47 分 |
 
-これだと全体で約 18 時間になるため、最終の既定値を **静止画 96 spp、パノラマ 24 spp、ベイク 96 spp、env 256 spp** に下げた
-（OIDN のアルベド＋法線付きで、切り抜きを見る限り 96 spp の室内は十分きれい）。サンプル数に比例するとして、上の実測と
-プレビューの所要時間の比（最終 160 spp ÷ プレビュー ≒ 37〜44 倍）から：
+時間を惜しまない方針なので、最終の既定値はこの **静止画 160 spp、パノラマ 48 spp** のままとし、ベイクも
+**128 spp・3 アトラスとも契約サイズ（ceil も等倍）、env 256 spp** にした。サンプル数と画素数に比例するとして：
 
-| 工程 | 見積もり |
-|---|---|
-| ライトマップ（floor・wall は契約サイズ、ceil は 1/2 で焼いて拡大、96 spp） | floor 約 42 分、ceil 約 9 分、wall 約 109 分 |
-| env_interior.hdr（256 spp） | 約 13 分 |
-| 静止画 18 枚（96 spp） | 約 5.2 時間（室内 1 枚 約 20 分、外観 約 14 分） |
-| パノラマ 6 枚（24 spp） | 約 2.2 時間（1 枚 約 20〜25 分） |
-| **合計**（`run_final.sh`） | **約 10 時間**（上と同程度の CPU の取り合いがある場合） |
-
-時間に余裕があれば `--samples` で上げられる（例：`render.py --shots it-south,soc --quality final --samples 160`）。
+| 工程 | 見積もり（競合あり） | 実測（競合あり） |
+|---|---|---|
+| ライトマップ（3 アトラスとも契約サイズ、128 spp） | floor 約 56 分、ceil 約 48 分、wall 約 145 分 | floor 43 分 |
+| env_interior.hdr（256 spp） | 約 13 分 | |
+| 静止画 18 枚（160 spp） | 約 9 時間（室内 1 枚 約 33 分、外観 約 24 分） | |
+| パノラマ 6 枚（48 spp） | 約 4.7 時間（1 枚 約 47 分） | |
+| **合計**（`run_final.sh`） | **約 18 時間**（単独ならおよそ 0.65 倍） | |
 
 ## 9. 既知の制限
 
@@ -287,7 +289,8 @@ Filter Glossy 1.0、永続データ（同じバリアントのショットを続
   （`lightmaps.json` の `quality: "preview"`、`renders.json` の各項目も `quality: "preview"`）。
 - 12F のセットバック（北側ウイング上部のテラス）は再現していない。12F も 2F と同じインスタンス。上階はどれも 2F の複製（偶数階は東西反転）。
 - 周辺街区は概略の箱。直射日光の影は落とさないが、天空光を遮り、反射光も計算する（SOC の北窓に入る反射光など）。外観ショットではカメラを含む箱と視線を遮る箱を隠す。
-- 階段室・機械室・シャフトは元のモデルに照明器具がないので、ライトマップでは暗い（黒に近い）。
+- 廊下・EV ホール・水回り・機械室・倉庫などにはダウンライト、階段室には廊下側のブラケット灯 1 灯を置いた（照明計画は推定）。
+  シャフトには照明がないので、ライトマップでは暗い（黒に近い）。
 - ライトマップは 99.5 パーセンタイルで正規化するので、明るい 0.5% の画素（バルコニー・窓際）は飽和する。
 - 室内のショットとベイクでは上階の代わりに 3F スラブの蓋を使う。2F 室内の光は変わらないが、向かいのガラスに映る自分の建物の上階は写らない。
 - ガラスは屈折なしの薄板（意図的。影の光線が通り、窓越しの光が正しく入る）。

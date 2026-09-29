@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PB } from '../core/geom';
 import { CORE, CW, GROUND_Y, H, PLATE, SPEC } from '../data/spec';
 
@@ -6,8 +7,8 @@ import { CORE, CW, GROUND_Y, H, PLATE, SPEC } from '../data/spec';
  * 外観用の上階（3F〜12F）と屋上。
  *
  * 2F の躯体・軒・天井面と天井照明を InstancedMesh で 4.5 m ずつ積み上げる（Blender 側の
- * コレクションインスタンスと同じ考え方）。家具・人物は省略。12F のセットバックは表現しない。
- * 上階は Blender へは書き出さない（Blender 側で独自に積層する）。
+ * コレクションインスタンスと同じ考え方）。家具は窓越しに見える大きなものだけを複製し、人物・小物は省略。
+ * 12F のセットバックは表現しない。上階は Blender へは書き出さない（Blender 側で独自に積層する）。
  */
 
 export const UPPER_FLOORS = 10; // 3F〜12F
@@ -45,6 +46,72 @@ export function buildUpperFloors(sources: THREE.Object3D[], count = UPPER_FLOORS
       }
       finish(out, mesh, grp);
     });
+  }
+  return grp;
+}
+
+/** 上階に複製する家具のプロト（窓越しに見える大きなもの。キーボード・マグなどの小物、水回りは省く） */
+const UPPER_FURNITURE = /^(chair|island|desk|table|monitor|display|panel|locker|shelf|archive|booth|sofa|whiteboard|plant|soc\.console|counter|bench|rack|pc\.cabinet|device\.cabinet|mfp|trash)[.:]/;
+
+/**
+ * 2F の家具（InstancedMesh）をマテリアルごとに 1 ジオメトリへ焼き固め、上階へ InstancedMesh で積む。
+ * 2F のベイク GI は家具の接地影を含むので、上階にも同じ家具を置いて影と物を一致させる。
+ * 色替え（instanceColor）するマテリアルは頂点色つきの派生マテリアルにする。影は落とさない（室内の細部なので）。
+ */
+export function buildUpperFurniture(furniture: THREE.Object3D, count = UPPER_FLOORS): THREE.Group {
+  const grp = new THREE.Group();
+  grp.name = 'upperFurniture';
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const tinted = new Map<THREE.Material, THREE.Material>();
+  const m = new THREE.Matrix4();
+  const c = new THREE.Color();
+  furniture.updateMatrixWorld(true);
+  furniture.traverse((o) => {
+    const im = o as THREE.InstancedMesh;
+    if (!im.isInstancedMesh || Array.isArray(im.material) || !UPPER_FURNITURE.test(im.name)) return;
+    const base = im.material;
+    const tint = !!base.userData.tintable;
+    let mat = base;
+    if (tint) {
+      mat = tinted.get(base) ?? Object.assign(base.clone(), { vertexColors: true });
+      tinted.set(base, mat);
+    }
+    const src = im.geometry.index ? im.geometry.toNonIndexed() : im.geometry;
+    for (let i = 0; i < im.count; i++) {
+      im.getMatrixAt(i, m);
+      m.premultiply(im.matrixWorld);
+      const g = new THREE.BufferGeometry();
+      for (const a of ['position', 'normal', 'uv']) if (src.attributes[a]) g.setAttribute(a, src.attributes[a].clone());
+      if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      g.applyMatrix4(m);
+      if (tint) {
+        if (im.instanceColor) im.getColorAt(i, c);
+        else c.copy((base.userData.defaultTint as THREE.Color | undefined) ?? new THREE.Color(0xffffff));
+        const n = g.attributes.position.count;
+        const col = new Float32Array(n * 3);
+        for (let k = 0; k < n; k++) c.toArray(col, k * 3);
+        g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      }
+      const list = byMat.get(mat) ?? [];
+      list.push(g);
+      byMat.set(mat, list);
+    }
+    if (src !== im.geometry) src.dispose();
+  });
+  const t = new THREE.Matrix4();
+  for (const [mat, geos] of byMat) {
+    const merged = mergeGeometries(geos, false);
+    for (const g of geos) g.dispose();
+    if (!merged) continue;
+    const out = new THREE.InstancedMesh(merged, mat, count);
+    for (let k = 0; k < count; k++) out.setMatrixAt(k, t.makeTranslation(0, H.floorToFloor * (k + 1), 0));
+    out.name = 'upper:furniture:' + (mat.name || mat.uuid);
+    out.castShadow = false;
+    out.receiveShadow = true;
+    out.instanceMatrix.needsUpdate = true;
+    out.computeBoundingBox();
+    out.computeBoundingSphere();
+    grp.add(out);
   }
   return grp;
 }

@@ -1,12 +1,12 @@
 // Blender 連携：アプリをヘッドレスで開き、scene.glb と meta.json を blender/cache/ に書き出す。
-//   npm run dev（別ターミナル）→ node scripts/export-scene.mjs [url]
-// Chromium は CHROME_PATH、未指定なら Playwright 同梱パス。
+//   npm run dev（別ターミナル）→ node scripts/export-scene.mjs [url] [出力先]
+// Chromium は CHROME_PATH、未指定なら Playwright 同梱パス。出力先を変えたときは BLENDER_CACHE で Blender 側に渡す。
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
-const out = path.resolve('blender/cache');
+const out = path.resolve(process.argv[3] ?? 'blender/cache');
 fs.mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({

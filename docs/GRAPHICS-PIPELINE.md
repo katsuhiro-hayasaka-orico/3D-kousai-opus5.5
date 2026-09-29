@@ -31,8 +31,10 @@
 - 開発サーバー起動中に `node scripts/export-scene.mjs` → `blender/cache/scene.glb` と `meta.json`。
 - glTF の最上位ノード：`L_structure, L_eaves, L_ceiling, L_furniture, L_people, L_site, L_upper`。
   - `L_upper` は周辺街区の箱（マテリアル `ghost.city`、箱ごとに別メッシュ。旧版は 1 メッシュ）。Blender は連結成分ごとに
-    `city.<n>` として実体化し、外装シェーダ（階 3.8 m・スパン 1.5 m の格子）を当てる。
+    `city.<n>`（番号はブラウザの `CITY_BLOCKS` の順。親ノードは `cityBlock.<n>`）として実体化し、1 個の共有マテリアル `city`
+    （階 3.8 m・スパン 1.5 m の格子の外装シェーダ。太陽へ向かう影の光線だけ素通し）を当てる。
   - ブラウザの外観用の上階 3F〜12F と屋上（`floors` レイヤー）は書き出さない。Blender は 2F のコレクションインスタンスで独自に積む。
+    ブラウザの上階は 2F の躯体・天井・照明に加えて大きな家具を複製し、2F と同じライトマップを当てる（家具の接地影と物が一致する）。
 - メッシュ名：静的メッシュは `structure:<マテリアルキー>` など、家具・人物は `<プロト名>:<マテリアルキー>[#色]`。
 - マテリアル名は three.js 側のキー（例 `floor.carpetIT`, `glass.cw`, `light.panel`, `screen.video2`, `person.top#2f3b52`）。
   `#rrggbb` はインスタンス色（人物の服・肌、樹木の葉）で分割した派生マテリアル。
@@ -64,7 +66,9 @@
   }
   ```
   画素値 p（sRGB をデコードした線形 0〜1）× `scale` = Blender の Diffuse ライトパス値。
-  three.js では `lightMapIntensity = scale × π × exposure × gain`（three の lightMap は放射照度扱いで BRDF_Lambert の 1/π が掛かるため）。
+  three.js では `lightMapIntensity = scale × π × exposure × gain × (1 + SUN_BOUNCE[atlas] × sun)`
+  （three の lightMap は放射照度扱いで BRDF_Lambert の 1/π が掛かるため π を掛ける）。`SUN_BOUNCE`（床 0.05・壁 0.2・天井 0.55）は
+  焼いていない太陽直達光の室内での照り返しの近似、`sun` は太陽高度 / 25° を 0〜1 に丸めた値。
   `exposure` は `bake.atlases.floor.stats.meanLum`（床の平均輝度。無ければ壁 → 天井）を目標値に合わせる自動露出、
   `gain` は UI の「GI 強度」。
   `bake.atlases.<atlas>` には `samples`・`seconds`・`resolutionScale`・`quality`（preview／final）と

@@ -40,7 +40,8 @@ from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 BLENDER_DIR = ROOT / 'blender'
-CACHE = BLENDER_DIR / 'cache'
+# 書き出し（scene.glb・meta.json）の場所。試験用の書き出しを使うときは環境変数 BLENDER_CACHE で差し替える
+CACHE = Path(os.environ['BLENDER_CACHE']).resolve() if os.environ.get('BLENDER_CACHE') else BLENDER_DIR / 'cache'
 GLB = CACHE / 'scene.glb'
 META = CACHE / 'meta.json'
 OUT = BLENDER_DIR / 'out'  # 中間ファイル（EXR・PNG・ログ）。git 管理外
@@ -273,15 +274,22 @@ def organize_collections(h: SceneHandles) -> None:
     ghost.hide_viewport = True
     city = _new_collection('City', master)
     h.col['City'] = city
-    for o in list(ghost.objects):
-        if o.type == 'MESH' and o.data.materials and o.data.materials[0].name == 'ghost.city':
-            # ブラウザ版は箱ごとに別メッシュ（旧版は 1 メッシュ）。どちらでも連結成分ごとに分ける
-            h.city_blocks += split_city_blocks(o, city, start=len(h.city_blocks))
+    # ブラウザ版は箱ごとに別メッシュ（親の Empty が cityBlock.<i>）、旧版は 1 メッシュ。どちらでも連結成分ごとに分ける。
+    # 親の番号順に処理して、Blender の city.<n> をブラウザの CITY_BLOCKS の番号にそろえる
+    def order(o: bpy.types.Object) -> tuple[int, str]:
+        tail = o.parent.name.rsplit('.', 1)[-1] if o.parent else ''
+        return (int(tail) if tail.isdigit() else 1_000_000, o.name)
+
+    srcs = [o for o in ghost.objects if o.type == 'MESH' and o.data.materials and o.data.materials[0].name == 'ghost.city']
+    mat = city_material()
+    for o in sorted(srcs, key=order):
+        h.city_blocks += split_city_blocks(o, city, mat, start=len(h.city_blocks))
     for name in ('Upper', 'Roof', 'Cap', 'Lights'):
         h.col[name] = _new_collection(name, master)
 
 
-def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection, start: int = 0) -> list[bpy.types.Object]:
+def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection, mat: bpy.types.Material,
+                      start: int = 0) -> list[bpy.types.Object]:
     """周辺街区（1 メッシュに複数の箱）を連結成分ごとの独立オブジェクトにする（ショットごとに隠せるように）"""
     bm = bmesh.new()
     bm.from_mesh(src.data)
@@ -305,7 +313,6 @@ def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection, start: i
                         seen.add(n.index)
                         stack.append(n)
         blocks.append(comp)
-    mat = city_material()
     out = []
     for i, comp in enumerate(blocks):
         nb = bmesh.new()
@@ -1102,7 +1109,7 @@ def split_led_faces() -> None:
 def upgrade_materials(h: SceneHandles) -> None:
     split_led_faces()
     for m in bpy.data.materials:
-        if not m.use_nodes or m.name.startswith('ghost') or m.name == 'city':
+        if not m.use_nodes or m.name.startswith('ghost') or m.name.startswith('city'):
             continue
         key = base_key(m.name)
         fn = rule_for(key)
@@ -1125,6 +1132,10 @@ def city_material() -> bpy.types.Material:
     スパンドレル帯・濃色ガラス・一部点灯した窓・屋上面を塗り分ける。
     太陽へ向かう影の光線だけは素通しにする（直射日光の影を落とさない）。
     """
+    # 全街区で 1 個を共有する（set_variant が太陽方向の円錐をこの 1 個にだけ設定するため）
+    m = bpy.data.materials.get('city')
+    if m is not None:
+        return m
     m = bpy.data.materials.new('city')
     m.use_nodes = True
     nt = m.node_tree

@@ -4,7 +4,7 @@ import './style.css';
 import { Instancer } from './core/instancer';
 import { acZoneOf } from './build/ceiling';
 import { ALL_ROOMS, GROUP_LABEL, Room, roomArea, roomAt, roomById } from './data/rooms';
-import { GROUND_Y, PLATE, SPEC, TSUBO } from './data/spec';
+import { CW, GROUND_Y, PLATE, SPEC, TSUBO } from './data/spec';
 import { jst, sunPosition } from './sun';
 import { Labels } from './ui/labels';
 import { Minimap } from './ui/minimap';
@@ -148,7 +148,7 @@ async function init(): Promise<void> {
     world.cityBlocks,
     new THREE.Box3(new THREE.Vector3(PLATE.x0, GROUND_Y, PLATE.z0), new THREE.Vector3(PLATE.x1, GROUND_Y + SPEC.height, PLATE.z1)),
   );
-  labels.poi('麹町ミレニアムガーデン（オリコ本社）※概略', 2, 30, 82, () => world.cityBlocks[0].visible);
+  labels.poi('麹町ミレニアムガーデン（オリコ本社）※概略', 2, 30, 82, () => world.layers.upper.visible && world.cityBlocks[0].visible);
   registerEmitters(scene);
   lightmaps = new Lightmaps(world, renderer);
 
@@ -229,6 +229,7 @@ function setSun(hours: number): void {
   lightmaps.setSun(k, elevation);
   lighting.setDaylight(lightmaps.ambientDaylight);
   sun.color.setHSL(0.08, 0.6 - 0.45 * k, 0.72 + 0.2 * k);
+  fitShadow();
   // 周辺街区の点灯窓：昼はガラスの反射に埋もれ、日没に向けて浮かび上がる
   (M('ghost.city') as THREE.MeshStandardMaterial).emissiveIntensity = 0.3 + 1.3 * (1 - k) ** 2;
   renderer.shadowMap.needsUpdate = true;
@@ -254,7 +255,8 @@ function applyModeLayers(): void {
   layer('furniture', t('furniture'));
   layer('people', t('people'));
   const indoor = mode === 'walk' || mode === 'exterior';
-  layer('ceiling', mode === 'walk' || (t('ceiling') && mode !== 'plan'));
+  // 外観で上階を出すときは、上階の複製と同じく 2F にも天井・照明を出す
+  layer('ceiling', mode === 'walk' || (mode === 'exterior' && t('upper')) || (t('ceiling') && mode !== 'plan'));
   layer('eaves', indoor || t('context'));
   layer('site', mode !== 'plan' && t('context'));
   layer('upper', mode === 'exterior' && t('upper'));
@@ -269,6 +271,7 @@ function applyModeLayers(): void {
   labels.setEnabled('axis', mode === 'plan' || t('grid'));
   labels.setEnabled('ac', t('ac'));
   labels.setEnabled('poi', mode === 'exterior');
+  fitShadow();
 }
 
 let panelBeforeWalk: boolean | null = null;
@@ -590,13 +593,15 @@ function pick(cx: number, cy: number): void {
   ray.setFromCamera(ndc, camera);
   const targets = world.pickables.filter((o) => o.visible);
   const hits = ray.intersectObjects(targets, true);
+  // 外観の上階・屋上（不透明）より奥の 2F は選ばない
+  const maxD = world.layers.floors.visible ? (ray.intersectObjects(upperOccluders(), false)[0]?.distance ?? Infinity) : Infinity;
   // 床（y=0）との交点
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const fp = new THREE.Vector3();
   const floorHit = ray.ray.intersectPlane(plane, fp);
-  const room = floorHit ? roomAt(fp.x, fp.z) : undefined;
+  const room = floorHit && ray.ray.origin.distanceTo(fp) < maxD ? roomAt(fp.x, fp.z) : undefined;
   for (const h of hits) {
-    if (!h.object.visible) continue;
+    if (!h.object.visible || h.distance > maxD) continue;
     const info = Instancer.pickOf(h.object, h.instanceId);
     if (info) {
       const rm = roomAt(h.point.x, h.point.z) ?? room;
@@ -605,6 +610,55 @@ function pick(cx: number, cy: number): void {
     }
   }
   if (room) showRoom(room);
+}
+
+/** ピックを遮る上階・屋上のメッシュ（ガラス・家具・照明器具は除く） */
+let occluders: THREE.Object3D[] | null = null;
+function upperOccluders(): THREE.Object3D[] {
+  if (!occluders) {
+    const list: THREE.Object3D[] = [];
+    world.layers.floors.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || Array.isArray(m.material) || m.material.userData.isGlass) return;
+      if (m.name.startsWith('upper:furniture:') || m.name.startsWith('upper:ceil.')) return;
+      list.push(m);
+    });
+    occluders = list;
+  }
+  return occluders;
+}
+
+/**
+ * 太陽のシャドウカメラの範囲。通常は 2F と外構（原点中心 ±58 m）。外観で上階を出すときは、
+ * 建物全体（庇込み・地盤〜塔屋頂部）の外接箱をライト空間へ投影した範囲まで広げる（上階・屋上の影が切れないように）
+ */
+const shadowBox = new THREE.Box3(
+  new THREE.Vector3(PLATE.x0 - CW.eave - 0.5, GROUND_Y, PLATE.z0 - CW.eave - 0.5),
+  new THREE.Vector3(PLATE.x1 + CW.eave + 0.5, GROUND_Y + SPEC.height + 0.5, PLATE.z1 + CW.eave + 0.5),
+);
+const shadowCorner = new THREE.Vector3();
+function fitShadow(): void {
+  const cam = sun.shadow.camera;
+  let [l, r, b, t] = [-58, 58, -58, 58];
+  if (mode === 'exterior' && world?.layers.floors.visible) {
+    sun.updateMatrixWorld();
+    sun.target.updateMatrixWorld();
+    sun.shadow.updateMatrices(sun);
+    for (let i = 0; i < 8; i++) {
+      shadowCorner
+        .set(i & 1 ? shadowBox.max.x : shadowBox.min.x, i & 2 ? shadowBox.max.y : shadowBox.min.y, i & 4 ? shadowBox.max.z : shadowBox.min.z)
+        .applyMatrix4(cam.matrixWorldInverse);
+      l = Math.min(l, shadowCorner.x - 1);
+      r = Math.max(r, shadowCorner.x + 1);
+      b = Math.min(b, shadowCorner.y - 1);
+      t = Math.max(t, shadowCorner.y + 1);
+    }
+  }
+  if (cam.left !== l || cam.right !== r || cam.bottom !== b || cam.top !== t) {
+    Object.assign(cam, { left: l, right: r, bottom: b, top: t });
+    cam.updateProjectionMatrix();
+    renderer.shadowMap.needsUpdate = true;
+  }
 }
 
 function roomDetail(r: Room): string {
@@ -786,6 +840,13 @@ window.addEventListener('resize', onResize);
   },
   stats: () => world.stats,
   cityHidden: () => clearance.hidden,
+  /** 撮影用：外観・俯瞰のカメラを任意の位置・注視点へ（three.js 座標） */
+  view: (pos: [number, number, number], target: [number, number, number]) => {
+    fly = null;
+    persp.position.set(...pos);
+    orbit.target.set(...target);
+    orbit.update();
+  },
   lightmapInfo: () => ({ hash: world.lightmap.hash, wallDensity: world.lightmap.wallDensity, wallFill: world.lightmap.wallFill, meshes: world.lightmap.meshes.length }),
   /** Blender 連携：scene.glb と meta.json をダウンロード（scripts/export-scene.mjs から呼ぶ） */
   exportScene: async () => {

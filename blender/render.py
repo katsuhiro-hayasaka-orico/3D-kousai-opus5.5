@@ -97,7 +97,7 @@ SHOTS = [
 ]
 
 #: 品質：解像度（final 基準）、サンプル数、適応サンプリングの閾値。
-#: final は CPU 4 コアで全ショット ≒ 8 時間（実測に基づく見積もりは README §8）
+#: final は CPU 4 コアで全ショット ≒ 13〜14 時間（実測に基づく見積もりは README §8）
 QUALITY = {
     'preview': {'scale': 1 / 3, 'pano_scale': 0.25, 'samples': 32, 'pano_samples': 16, 'threshold': 0.05},
     'final': {'scale': 1.0, 'pano_scale': 1.0, 'samples': 160, 'pano_samples': 48, 'threshold': 0.02},
@@ -189,6 +189,11 @@ def setup_shot(h: C.SceneHandles, s: Shot, q: dict, samples: int, scale: float) 
     return {**info, 'w': rw, 'h': rh}
 
 
+def full_size(s: Shot) -> tuple[int, int]:
+    """final・等倍でのレンダー解像度"""
+    return PANO_SIZE if s.kind == 'pano' else STILL_SIZE
+
+
 def save_outputs(png: Path, s: Shot, original: bool) -> dict:
     """PNG → Web 用の縮小 JPEG と 480 px 幅のサムネイル。original=True なら原寸 JPEG q92 を docs/renders/ にも保存"""
     from PIL import Image
@@ -220,7 +225,7 @@ def resave(shots: list[Shot]) -> None:
             C.log(f'{s.id}: PNG または renders.json の項目がないので飛ばす')
             continue
         e = {k: v for k, v in cur[s.id].items() if k not in ('webW', 'webH', 'original')}
-        e.update(save_outputs(png, s, original=e.get('quality') == 'final'))
+        e.update(save_outputs(png, s, original=e.get('quality') == 'final' and (e.get('w'), e.get('h')) == full_size(s)))
         entries.append(e)
         C.log(f'{s.id}: 保存し直し → {e["file"]}（{e["webW"]}×{e["webH"]}）')
     if entries:
@@ -274,7 +279,8 @@ def main() -> None:
         png = png_dir / f'{s.id}.png'
         C.log(f'{s.id}: {info["w"]}×{info["h"]}、{samples} spp、{s.variant}、EV {s.ev:+.1f} …')
         sec = C.render_to(png)
-        saved = save_outputs(png, s, original=args.quality == 'final')
+        # 原寸（docs/renders/）は final を原寸で描いたときだけ。試し描き（--scale）で上書きしない
+        saved = save_outputs(png, s, original=args.quality == 'final' and (info['w'], info['h']) == full_size(s))
         file = saved['file']
         entry = {
             'id': s.id, 'kind': 'pano' if s.kind == 'pano' else 'still', 'title': s.title, 'preset': s.preset,

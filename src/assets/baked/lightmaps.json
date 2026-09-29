@@ -5,7 +5,7 @@
       "file": "lm_floor.webp",
       "w": 4096,
       "h": 2048,
-      "scale": 1.25521
+      "scale": 1.25969
     },
     "ceil": {
       "file": "lm_ceil.webp",
@@ -25,22 +25,22 @@
   "bake": {
     "atlases": {
       "floor": {
-        "samples": 16,
-        "seconds": 74.9,
-        "resolutionScale": 0.5,
-        "quality": "preview",
+        "samples": 128,
+        "seconds": 2593.1,
+        "resolutionScale": 1.0,
+        "quality": "final",
         "stats": {
-          "validFraction": 0.8652,
+          "validFraction": 0.8657,
           "median": [
-            0.1235,
-            0.1186,
+            0.1243,
+            0.1187,
             0.1055
           ],
-          "meanLum": 0.1556,
-          "p99_5": 1.2552,
-          "max": 1.8559,
+          "meanLum": 0.1572,
+          "p99_5": 1.2597,
+          "max": 1.7887,
           "clippedFraction": 0.005,
-          "bytes": 187504
+          "bytes": 222092
         }
       },
       "ceil": {

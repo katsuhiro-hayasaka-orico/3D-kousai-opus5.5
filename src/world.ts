@@ -21,7 +21,7 @@ import {
   treeProto,
 } from './build/shell';
 import { Walkers } from './build/walkers';
-import { buildRoof, buildUpperFloors } from './build/upper';
+import { buildRoof, buildUpperFloors, buildUpperFurniture } from './build/upper';
 import { DoorInfo, buildWalls, wallColliders } from './build/walls';
 import { roomPlateTexture } from './core/textures';
 import { lmHash, packWallCharts } from './core/lightmap';
@@ -161,7 +161,8 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
     const pb = new PB();
     buildCityBlock(pb, i);
     const g = buildStatic(pb, 'ghost', { cast: false, receive: false });
-    g.name = `city.${i}`;
+    // Blender は分割した街区を city.<n> と名付けるので、ここは別の名前にする（番号は Blender 側の並び順に使う）
+    g.name = `cityBlock.${i}`;
     g.traverse((o) => (o as THREE.Mesh).isMesh && cityBlocks.push(o as THREE.Mesh));
     layers.upper.add(g);
   });
@@ -176,6 +177,7 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
 
   // ---- 外観用の上階（3F〜12F）と屋上 ----
   layers.floors.add(buildUpperFloors([layers.structure, layers.eaves, layers.ceiling]));
+  layers.floors.add(buildUpperFurniture(layers.furniture));
   const roof = new PB();
   buildRoof(roof);
   layers.floors.add(buildStatic(roof, 'roof'));

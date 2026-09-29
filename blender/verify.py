@@ -168,12 +168,17 @@ def verify_facade(samples: int) -> list[dict]:
     origin = C.three_to_bl(probes[0][1])
     crossing = [o.name for o in h.city_blocks
                 if o.ray_cast(o.matrix_world.inverted() @ origin, o.matrix_world.inverted().to_3x3() @ sv)[0]]
-    ok = sun[0] > 0.5 * expect_s and sun[1] < 0.02 * sun[0]
+    # 素通しの円錐は set_variant が 'city' の 1 個にだけ設定するので、全街区がそれを共有していること
+    mats = sorted({ms.material.name for o in h.city_blocks for ms in o.material_slots if ms.material})
+    shared = mats == ['city']
+    ok = sun[0] > 0.5 * expect_s and sun[1] < 0.02 * sun[0] and shared
     C.log(f'直射日光の寄与（10:30）：南面 {sun[0]:.0f} lx（ガラス・庇なしの理論値 {expect_s:.0f} lx）、北面 {sun[1]:.0f} lx'
-          f'、南面から太陽への線上の周辺街区 {crossing or "なし"} → {"OK" if ok else "NG"}')
+          f'、南面から太陽への線上の周辺街区 {crossing or "なし"}、街区 {len(h.city_blocks)} 個のマテリアル {mats}'
+          f' → {"OK" if ok else "NG"}')
     return [{'check': 'facade', 'probes': [p[0] for p in probes], 'day_lx': [round(v) for v in vals['day']],
              'sky_only_lx': [round(v) for v in vals['bake']], 'sun_lx': [round(v) for v in sun],
-             'expected_south_sun_lx': round(expect_s), 'sun_path_city_blocks': crossing, 'ok': bool(ok)}]
+             'expected_south_sun_lx': round(expect_s), 'sun_path_city_blocks': crossing,
+             'city_blocks': len(h.city_blocks), 'city_materials': mats, 'ok': bool(ok)}]
 
 
 def verify_sky(samples: int) -> list[dict]:

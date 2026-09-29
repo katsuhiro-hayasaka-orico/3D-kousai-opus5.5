@@ -11,7 +11,7 @@ import { debugLightmap } from './lmdebug';
  * 契約（docs/GRAPHICS-PIPELINE.md §3）：
  *  - src/assets/baked/lightmaps.json の hash が world.lightmap.hash と一致するときだけ使う
  *  - 画像は uv1（channel 1）・flipY=false・sRGB 8bit。画素値 × scale = Blender の Diffuse 照度パス
- *  - three の lightMap は放射照度扱い（BRDF_Lambert で 1/π）なので lightMapIntensity = scale × π × gain
+ *  - three の lightMap は放射照度扱い（BRDF_Lambert で 1/π）なので lightMapIntensity = scale × π × gain × (1 + SUN_BOUNCE × sun)
  *
  * gain は「自動露出 × 利用者の倍率（スライダー）」。ベイク値は Blender の物理単位（室内なので暗い）で、
  * リアルタイムの太陽光（画面の明るさ基準）と釣り合わないため、ベイク時の統計（平均輝度）から

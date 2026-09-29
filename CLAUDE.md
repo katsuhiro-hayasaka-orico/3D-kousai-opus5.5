@@ -25,7 +25,7 @@ node scripts/shoot.mjs http://localhost:5173/ shots '[{"eval":"__app.goPreset(\"
 ```
 
 - Chromium は `CHROME_PATH`、未指定なら `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`（SwiftShader でソフトウェア WebGL。初回ロードは約 10 秒）。
-- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`toggle(レイヤー, bool)`、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`gfx()`、`exportScene()`。
+- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`toggle(レイヤー, bool)`、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`view(pos, target)`（外観・俯瞰のカメラを任意位置へ）、`gfx()`、`exportScene()`。
 - 撮影結果は Read ツールで画像を見て確認する（`shots/` は gitignore 済み）。Blender のベイク・レンダー中は CPU が埋まるので、`nice` を付け、`W=1100 H=680` 程度に小さくして撮る。
 - URL に `?lmdebug=1` を付けると、ライトマップの代わりに UV 検証用の合成画像（室の輪郭・グリッド・壁面の向き）を貼る。
 
