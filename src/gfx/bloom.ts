@@ -15,7 +15,7 @@ export const EMIT_LAYER = 5;
 
 /** マテリアルキー → にじみの強さ（0 = 対象外） */
 function emitGain(key: string): number {
-  if (key.startsWith('light.panel') || key.startsWith('light.warm')) return 0.7;
+  if (key.startsWith('light.panel') || key.startsWith('light.warm')) return 0.45;
   if (key.startsWith('light.led')) return 1.4;
   if (key.startsWith('exitSign')) return 1.2;
   if (key.startsWith('rack.front')) return 0.8;
@@ -110,7 +110,7 @@ export class SelectiveBloomPass extends Pass {
     this.emitRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.emitRT.texture.name = 'bloom.emit';
     // 閾値 0：発光体しか描かないので、描かれたものはすべてにじませる
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.15, 0);
   }
 
   /** ぼかし成分（半解像度） */
@@ -152,6 +152,7 @@ export class SelectiveBloomPass extends Pass {
     // 通常描画中は深度テクスチャを外す（描画先と同じテクスチャを参照するとフィードバックループになる）
     shared.tSceneDepth.value = null;
 
+    // 最後の加算合成は入力（emitRT）自身に行われるが、以後は使わない。ぼかし成分は texture から参照する
     this.bloom.render(renderer, this.emitRT, this.emitRT, 0, false);
   }
 

@@ -13,9 +13,38 @@ import { SkyDome } from './sky';
  *
  * ベイク GI（ライトマップ）が有効なときは、床・壁・天井の環境光をシェーダー側で弱める
  * （lightmaps.ts）ほか、家具・人物が浮かないよう半球光をやや絞り、IBL を少し強める。
+ *
+ * 室内 HDR は Blender のシーン単位（輝度 1.0 ≒ 1,000 cd/m²）なので露出を掛けて使う。
+ * ライトマップがあればその自動露出（×GI 強度）と揃え、無ければ HDR の平均輝度から決める。
+ * 室内 HDR があるときは環境光の大半を HDR が担うので、半球光は補助程度に下げる。
+ *
+ * 室内 HDR・ライトマップはどちらも 10:30 の昼光で焼いてあるため、ベイク GI が有効なウォークスルーでは
+ * 室内の環境光（IBL・半球光）にも時刻に応じた倍率（Lightmaps.ambientDaylight）を掛け、夕方に家具・人物だけが
+ * 昼の明るさのまま残らないようにする。
  */
 
 const hdrUrls = import.meta.glob<string>('../assets/baked/env_interior.hdr', { eager: true, query: '?url', import: 'default' });
+
+/** 室内 HDR の立体角平均輝度をこの値に合わせる（ライトマップが無いときの露出） */
+const HDR_TARGET = 1.5;
+
+/** 正距円筒 HDR（RGBA）の立体角で重み付けした平均輝度（間引いて計算） */
+function meanLuminance(tex: THREE.DataTexture): number {
+  const { width: w, height: h, data } = tex.image as { width: number; height: number; data: Uint16Array | Float32Array };
+  // HDRLoader の既定は HalfFloat
+  const half = data instanceof Float32Array ? (v: number) => v : THREE.DataUtils.fromHalfFloat;
+  let sum = 0;
+  let wsum = 0;
+  for (let y = 0; y < h; y += 4) {
+    const k = Math.sin(((y + 0.5) / h) * Math.PI);
+    for (let x = 0; x < w; x += 4) {
+      const i = (y * w + x) * 4;
+      sum += k * (0.2126 * half(data[i]) + 0.7152 * half(data[i + 1]) + 0.0722 * half(data[i + 2]));
+      wsum += k;
+    }
+  }
+  return wsum > 0 ? sum / wsum : 0;
+}
 
 interface Look {
   background: THREE.Color | THREE.Texture;
@@ -26,11 +55,17 @@ interface Look {
 }
 
 export class Lighting {
-  readonly sky: SkyDome;
+  private sky: SkyDome;
   private roomEnv: THREE.Texture;
   private interiorEnv: THREE.Texture | null = null;
+  /** HDR の平均輝度から求めた露出 */
+  private interiorAuto = 1;
+  /** ライトマップと揃えた露出（あれば優先） */
+  private interiorExposure: number | null = null;
   private mode: Mode = 'orbit';
   private gi = false;
+  /** 室内の環境光の昼光による倍率（setDaylight） */
+  private daylight = 1;
   private orbitBg = new THREE.Color(0xe4e8ec);
   private planBg = new THREE.Color(0xf4f5f6);
   /** 室内 HDR の有無と読み込み状態（UI 表示用） */
@@ -52,6 +87,8 @@ export class Lighting {
     if (!url) return;
     try {
       const tex = await new HDRLoader().loadAsync(url);
+      const lum = meanLuminance(tex);
+      if (lum > 0) this.interiorAuto = THREE.MathUtils.clamp(HDR_TARGET / lum, 0.1, 20);
       tex.mapping = THREE.EquirectangularReflectionMapping;
       this.interiorEnv = this.pmrem.fromEquirectangular(tex).texture;
       tex.dispose();
@@ -72,6 +109,18 @@ export class Lighting {
     this.apply();
   }
 
+  /** 室内 HDR の露出をライトマップに揃える（null = HDR の平均輝度から自動） */
+  setInteriorExposure(k: number | null): void {
+    this.interiorExposure = k;
+    this.apply();
+  }
+
+  /** 室内の環境光の倍率（10:30 = 1）。ベイク GI が有効なウォークスルーでだけ使う */
+  setDaylight(k: number): void {
+    this.daylight = k;
+    this.apply();
+  }
+
   setSun(dir: THREE.Vector3): void {
     this.sky.setSun(dir);
   }
@@ -88,17 +137,22 @@ export class Lighting {
   private look(): Look {
     const interior = this.interiorEnv ?? this.roomEnv;
     const giHemi = this.gi ? 0.55 : 1;
+    // 室内の IBL と半球光（室内 HDR があれば HDR 主体）
+    const envK = this.interiorEnv ? (this.interiorExposure ?? this.interiorAuto) : this.gi ? 0.62 : 0.5;
+    const hemiK = this.interiorEnv ? 0.3 : 0.75 * giHemi;
     switch (this.mode) {
       case 'plan':
         return { background: this.planBg, backgroundIntensity: 1, environment: this.roomEnv, environmentIntensity: 0.5, hemi: 0.75 * giHemi };
-      case 'walk':
+      case 'walk': {
+        const day = this.gi ? this.daylight : 1;
         return {
           background: this.sky.background,
           backgroundIntensity: 0.62,
           environment: interior,
-          environmentIntensity: this.interiorEnv ? 1 : this.gi ? 0.62 : 0.5,
-          hemi: 0.75 * giHemi,
+          environmentIntensity: envK * day,
+          hemi: hemiK * day,
         };
+      }
       case 'exterior':
         return {
           background: this.sky.background,
@@ -108,12 +162,13 @@ export class Lighting {
           hemi: 0.45,
         };
       default:
+        // 俯瞰は外構も写るので、室内の露出のままだと屋外が白飛びする。室内 HDR は半分に抑え、半球光で補う
         return {
           background: this.orbitBg,
           backgroundIntensity: 1,
           environment: interior,
-          environmentIntensity: this.interiorEnv ? 1 : this.gi ? 0.62 : 0.5,
-          hemi: 0.75 * giHemi,
+          environmentIntensity: this.interiorEnv ? envK * 0.5 : envK,
+          hemi: this.interiorEnv ? 0.45 : hemiK,
         };
     }
   }

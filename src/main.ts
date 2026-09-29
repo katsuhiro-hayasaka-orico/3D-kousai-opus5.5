@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './style.css';
 import { Instancer } from './core/instancer';
 import { acZoneOf } from './build/ceiling';
@@ -12,6 +11,13 @@ import { Minimap } from './ui/minimap';
 import { WalkControls } from './ui/walk';
 import { LayerKey, World, buildWorld } from './world';
 import { aboutHtml } from './about';
+import { EMIT_LAYER, registerEmitters } from './gfx/bloom';
+import { Lighting } from './gfx/environment';
+import { Lightmaps } from './gfx/lightmaps';
+import { AOParams, PostFX, QUALITIES, Quality, initialQuality, saveQuality } from './gfx/post';
+import { Gallery } from './ui/gallery';
+import { PanoViewer } from './ui/pano';
+import { RENDERS } from './ui/renders';
 
 import { Mode, PRESETS, Preset } from './data/presets';
 
@@ -27,18 +33,18 @@ const loadmsg = $('#loadmsg');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// 素材色を保ったまま高輝度だけを圧縮する Khronos PBR Neutral（ACES より色相・彩度の転びが少ない）
+renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
+// ポストエフェクトは 1 フレームに複数回描画するので、フレーム単位で集計する（loop でリセット）
+renderer.info.autoReset = false;
 viewport.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xe4e8ec);
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.5;
 
 const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x8a8478, 0.75);
 scene.add(hemi);
@@ -55,6 +61,10 @@ sun.shadow.bias = -0.0003;
 sun.shadow.normalBias = 0.025;
 scene.add(sun);
 scene.add(sun.target);
+// 発光体だけを描くブルーム用パスでも同じライト構成にして、シェーダーの再コンパイルを避ける
+hemi.layers.enable(EMIT_LAYER);
+sun.layers.enable(EMIT_LAYER);
+const lighting = new Lighting(scene, hemi, renderer, pmrem);
 
 // カメラ
 const persp = new THREE.PerspectiveCamera(45, 1, 0.08, 1200);
@@ -87,12 +97,35 @@ planCtl.enabled = false;
 const labels = new Labels(viewport);
 scene.add(labels.group);
 
+// ポストエフェクト（画質プリセット）
+const post = new PostFX(renderer, scene, persp);
+post.setQuality(initialQuality());
+
+/** AO の効き（m）。俯瞰は広め、室内は接地感が出る程度に */
+const AO_BY_MODE: Record<Mode, AOParams> = {
+  orbit: { radius: 1.4, thickness: 2.0, power: 2.6, intensity: 0.9 },
+  plan: { radius: 1.0, thickness: 2.5, power: 2.4, intensity: 0.8 },
+  walk: { radius: 0.5, thickness: 1.0, power: 1.6, intensity: 1.0 },
+  exterior: { radius: 1.8, thickness: 2.5, power: 2.2, intensity: 0.85 },
+};
+
+// Blender（Cycles）レンダーのギャラリーと 360° ビューア
+const pano = new PanoViewer($('#app'), RENDERS.filter((r) => r.kind === 'pano'), renderer);
+const gallery = new Gallery($('#app'), RENDERS, {
+  goPreset: (name) => {
+    const p = PRESETS.find((q) => q.name === name);
+    if (p) goPreset(p);
+  },
+  openPano: (it) => pano.open(it),
+});
+
 // ------------------------------------------------------------
 // ワールド構築（進捗表示のため分割実行）
 // ------------------------------------------------------------
 let world: World;
 let walk: WalkControls;
 let minimap: Minimap;
+let lightmaps: Lightmaps;
 let mode: Mode = 'orbit';
 
 const tick = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -108,6 +141,8 @@ async function init(): Promise<void> {
   labels.buildAc(world.acCenters);
   labels.poi('新宿通り →（南）', 0, -5.4, 33);
   labels.poi('麹町ミレニアムガーデン（オリコ本社）※概略', 2, 30, 82);
+  registerEmitters(scene);
+  lightmaps = new Lightmaps(world, renderer);
 
   walk = new WalkControls(persp, renderer.domElement, world.colliders, world.obstacles);
   minimap = new Minimap($('#mapbox'), (x, z) => {
@@ -122,6 +157,47 @@ async function init(): Promise<void> {
   onResize();
   $('#loading').classList.add('done');
   requestAnimationFrame(loop);
+
+  // 任意アセット（Blender の出力）は表示開始後に読み込む
+  lighting.loadInterior().then(renderGfxNote);
+  await lightmaps.load(new URLSearchParams(location.search).has('lmdebug'));
+  applyGI(toggles.gi.on);
+}
+
+/** ベイク GI の適用（マテリアル差し替え＋環境光のバランス調整） */
+function applyGI(on: boolean): void {
+  lightmaps.setEnabled(on);
+  lighting.setGI(lightmaps.enabled);
+  lighting.setDaylight(lightmaps.ambientDaylight);
+  syncInteriorExposure();
+  const input = toggles.gi.input;
+  if (input) input.disabled = !lightmaps.available;
+  $<HTMLInputElement>('#giGain').disabled = !lightmaps.available;
+  renderGfxNote();
+}
+
+/** GI 強度（自動露出に対する倍率） */
+function setGIGain(g: number): void {
+  lightmaps.setGain(g);
+  syncInteriorExposure();
+  $<HTMLInputElement>('#giGain').value = String(g);
+  $('#giGainOut').textContent = g.toFixed(2);
+}
+
+/** 室内 HDR の露出をベイク GI と揃える（実ベイクが無ければ HDR 側の自動露出） */
+function syncInteriorExposure(): void {
+  lighting.setInteriorExposure(lightmaps.status === 'ready' ? lightmaps.exposure * lightmaps.gain : null);
+}
+
+function renderGfxNote(): void {
+  const lines = [lightmaps.note, lighting.interiorNote].filter(Boolean);
+  $('#gfxNote').textContent = lines.join('　／　');
+}
+
+function setQuality(q: Quality): void {
+  post.setQuality(q);
+  saveQuality(q);
+  document.querySelectorAll<HTMLButtonElement>('#quality button').forEach((b) => b.classList.toggle('on', b.dataset.q === q));
 }
 
 // ------------------------------------------------------------
@@ -132,10 +208,13 @@ function setSun(hours: number): void {
   const az = THREE.MathUtils.degToRad(azimuth);
   const el = THREE.MathUtils.degToRad(Math.max(elevation, 2));
   const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+  lighting.setSun(dir);
   sun.position.copy(dir.multiplyScalar(150));
   sun.target.position.set(0, 0, 0);
   const k = THREE.MathUtils.clamp(elevation / 25, 0, 1);
   sun.intensity = 0.4 + 2.2 * k;
+  lightmaps.setSun(k, elevation);
+  lighting.setDaylight(lightmaps.ambientDaylight);
   sun.color.setHSL(0.08, 0.6 - 0.45 * k, 0.72 + 0.2 * k);
   renderer.shadowMap.needsUpdate = true;
   const h = Math.floor(hours);
@@ -148,7 +227,7 @@ function setSun(hours: number): void {
 // ------------------------------------------------------------
 // モード
 // ------------------------------------------------------------
-const toggles: Record<string, { label: string; on: boolean; apply: (v: boolean) => void }> = {};
+const toggles: Record<string, { label: string; on: boolean; apply: (v: boolean) => void; input?: HTMLInputElement }> = {};
 
 function layer(k: LayerKey, v: boolean): void {
   world.layers[k].visible = v;
@@ -212,7 +291,6 @@ function setMode(m: Mode, instant = false): void {
       : m === 'walk'
         ? 'W/A/S/D・矢印：移動　ドラッグ：見回し　ホイール：画角　ミニマップ：ワープ'
         : 'ドラッグ：回転　右ドラッグ：移動　ホイール：ズーム　クリック：詳細表示';
-  scene.background = new THREE.Color(m === 'plan' ? 0xf4f5f6 : m === 'orbit' ? 0xe4e8ec : 0xcfe0ee);
   if (m === 'plan') {
     camera = ortho;
     // 縦長画面では長手（東西）を縦にして表示
@@ -240,6 +318,9 @@ function setMode(m: Mode, instant = false): void {
       flyTo(new THREE.Vector3(62, 12, 92), new THREE.Vector3(2, 9, 4), instant);
     }
   }
+  post.setCamera(camera);
+  post.setAO(AO_BY_MODE[m]);
+  lighting.setMode(m);
   applyModeLayers();
   applyViewOffset();
   renderer.shadowMap.needsUpdate = true;
@@ -340,24 +421,54 @@ function buildPanel(): void {
     ['grid', '通り芯・扉軌跡', false],
     ['context', '外構・周辺', true],
     ['upper', '他階（外観時）', true],
+    ['gi', 'ベイクGI（Blender）', true],
   ];
   const box = $('#layers');
   for (const [k, label, on] of defs) {
-    toggles[k] = { label, on, apply: () => applyModeLayers() };
     const l = document.createElement('label');
     l.className = 'tg';
     const i = document.createElement('input');
     i.type = 'checkbox';
     i.checked = on;
+    const apply =
+      k === 'gi'
+        ? applyGI
+        : () => {
+            applyModeLayers();
+            renderer.shadowMap.needsUpdate = true;
+          };
+    toggles[k] = { label, on, apply, input: i };
     i.onchange = () => {
       toggles[k].on = i.checked;
-      applyModeLayers();
-      renderer.shadowMap.needsUpdate = true;
+      apply(i.checked);
     };
     const s = document.createElement('span');
     s.textContent = label;
     l.append(i, s);
     box.appendChild(l);
+  }
+  // ライトマップの読み込みが終わるまでは操作不可
+  toggles.gi.input!.disabled = true;
+  toggles.gi.input!.closest('label')!.title = 'Blender でベイクした間接光（床・壁・天井）';
+
+  // 画質
+  const qbox = $('#quality');
+  for (const q of QUALITIES) {
+    const b = document.createElement('button');
+    b.textContent = q.label;
+    b.title = q.title;
+    b.dataset.q = q.key;
+    b.classList.toggle('on', q.key === post.quality);
+    b.onclick = () => setQuality(q.key);
+    qbox.appendChild(b);
+  }
+  const gain = $<HTMLInputElement>('#giGain');
+  gain.disabled = true;
+  gain.oninput = () => setGIGain(parseFloat(gain.value));
+  if (RENDERS.length) {
+    const pb = $('#photoBtn');
+    pb.hidden = false;
+    pb.onclick = () => gallery.open();
   }
 
   const time = $<HTMLInputElement>('#time');
@@ -540,7 +651,9 @@ function bindGo(body: HTMLElement): void {
 // スクリーンショット
 // ------------------------------------------------------------
 function screenshot(): void {
-  renderer.render(scene, camera);
+  // ポストエフェクト込みで描いた直後に読み出す（preserveDrawingBuffer なしでも同一タスク内なら有効）
+  lighting.update();
+  post.render(0);
   const url = renderer.domElement.toDataURL('image/png');
   const a = document.createElement('a');
   a.href = url;
@@ -574,9 +687,17 @@ function exportCsv(): void {
 // ------------------------------------------------------------
 const clock = new THREE.Clock();
 const compass = $('#compass');
+const viewDir = new THREE.Vector3();
 
 function loop(): void {
   const dt = Math.min(clock.getDelta(), 0.1);
+  renderer.info.reset();
+  requestAnimationFrame(loop);
+  if (pano.active) {
+    // 360° ビューア表示中はメインシーンを止める
+    pano.render();
+    return;
+  }
   if (fly) {
     fly.t = Math.min(1, fly.t + dt / 0.9);
     const e = fly.t < 0.5 ? 4 * fly.t ** 3 : 1 - (-2 * fly.t + 2) ** 3 / 2;
@@ -589,7 +710,8 @@ function loop(): void {
   else if (mode === 'plan') planCtl.update();
   else orbit.update();
 
-  renderer.render(scene, camera);
+  lighting.update();
+  post.render(dt);
   labels.update(scene, camera, viewport.clientWidth, viewport.clientHeight, true);
 
   // ミニマップ・方位
@@ -600,14 +722,13 @@ function loop(): void {
     minimap.draw(planCtl.target.x, planCtl.target.z, null);
     yawDeg = ortho.up.x > 0.5 ? 90 : 0;
   } else {
-    const d = new THREE.Vector3().subVectors(orbit.target, persp.position);
+    const d = viewDir.subVectors(orbit.target, persp.position);
     const yaw = Math.atan2(d.x, -d.z);
     yawDeg = THREE.MathUtils.radToDeg(yaw);
     minimap.draw(orbit.target.x, orbit.target.z, yaw, 0.5);
   }
   if (mode === 'walk') yawDeg = THREE.MathUtils.radToDeg(walk.yaw);
   compass.style.setProperty('--rot', `${-yawDeg}deg`);
-  requestAnimationFrame(loop);
 }
 
 // ------------------------------------------------------------
@@ -617,6 +738,8 @@ function onResize(): void {
   const w = viewport.clientWidth;
   const h = viewport.clientHeight;
   renderer.setSize(w, h);
+  post.setSize(w, h, renderer.getPixelRatio());
+  pano.resize(w, h);
   labels.setSize(w, h);
   persp.aspect = w / h;
   persp.updateProjectionMatrix();
@@ -638,18 +761,18 @@ window.addEventListener('resize', onResize);
   },
   presets: () => PRESETS.map((p) => p.name),
   toggle: (k: string, v: boolean) => {
-    if (toggles[k]) {
-      toggles[k].on = v;
-      applyModeLayers();
-      renderer.shadowMap.needsUpdate = true;
-    }
+    const t = toggles[k];
+    if (!t) return;
+    t.on = v;
+    if (t.input) t.input.checked = v;
+    t.apply(v);
   },
   stats: () => world.stats,
   lightmapInfo: () => ({ hash: world.lightmap.hash, wallDensity: world.lightmap.wallDensity, wallFill: world.lightmap.wallFill, meshes: world.lightmap.meshes.length }),
   /** Blender 連携：scene.glb と meta.json をダウンロード（scripts/export-scene.mjs から呼ぶ） */
   exportScene: async () => {
     const ex = await import('./export');
-    const glb = await ex.exportGLB(world);
+    const glb = await lightmaps.withBaseMaterials(() => ex.exportGLB(world));
     ex.download(glb, 'scene.glb', 'model/gltf-binary');
     ex.download(JSON.stringify(ex.exportMeta(world), null, 1), 'meta.json', 'application/json');
     return glb.byteLength;
@@ -657,6 +780,17 @@ window.addEventListener('resize', onResize);
   info: () => renderer.info,
   setSun,
   pick,
+  setQuality,
+  /** 画質・ライトマップ・レンダー一覧の状態 */
+  gfx: () => ({ quality: post.quality, lightmap: lightmaps?.info(), interior: lighting.interiorNote, renders: RENDERS.map((r) => `${r.kind}:${r.id}`) }),
+  setGIGain,
+  debugView: (v: 'ao' | 'bloom' | null) => post.debugView(v),
+  openGallery: (i?: number) => (i === undefined ? gallery.open() : gallery.show(i)),
+  openPano: (id: string) => {
+    const it = RENDERS.find((r) => r.id === id && r.kind === 'pano');
+    if (it) pano.open(it);
+  },
+  closePano: () => pano.close(),
 };
 
 init().catch((e) => {

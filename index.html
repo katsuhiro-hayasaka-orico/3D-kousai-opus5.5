@@ -16,12 +16,15 @@
           <div class="t1">麹町弘済ビルディング <span class="fl">2F</span></div>
           <div class="t2">オリエントコーポレーション　IT・システムグループ／リスク管理グループ</div>
         </div>
-        <nav id="modes" role="tablist" aria-label="表示モード">
-          <button data-mode="orbit" class="on" role="tab">俯瞰</button>
-          <button data-mode="plan" role="tab">平面図</button>
-          <button data-mode="walk" role="tab">ウォークスルー</button>
-          <button data-mode="exterior" role="tab">外観</button>
-        </nav>
+        <div class="tb-right">
+          <button id="photoBtn" hidden title="Blender（Cycles）でレンダリングした静止画・360°パノラマ">フォトリアル<small>（Blender Cycles）</small></button>
+          <nav id="modes" role="tablist" aria-label="表示モード">
+            <button data-mode="orbit" class="on" role="tab">俯瞰</button>
+            <button data-mode="plan" role="tab">平面図</button>
+            <button data-mode="walk" role="tab">ウォークスルー</button>
+            <button data-mode="exterior" role="tab">外観</button>
+          </nav>
+        </div>
       </header>
 
       <button id="panelToggle" aria-label="パネルを開閉">☰</button>
@@ -41,6 +44,16 @@
             <output id="timeOut">10:30</output>
           </div>
           <label class="tg"><input type="checkbox" id="shadows" checked /><span>影を表示</span></label>
+        </section>
+        <section>
+          <h3>画質・ベイクGI</h3>
+          <div id="quality" class="seg" role="group" aria-label="画質"></div>
+          <div class="sunrow girow">
+            <label for="giGain">GI 強度</label>
+            <input id="giGain" type="range" min="0.3" max="2.5" step="0.05" value="1" />
+            <output id="giGainOut">1.00</output>
+          </div>
+          <p id="gfxNote" class="gfx-note"></p>
         </section>
         <section>
           <h3>フロア概要</h3>

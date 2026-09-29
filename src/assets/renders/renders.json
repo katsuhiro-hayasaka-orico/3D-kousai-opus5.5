@@ -1,0 +1,724 @@
+[
+  {
+    "id": "ext-se-day",
+    "kind": "still",
+    "title": "外観 南東から（10:30）",
+    "preset": "南東から",
+    "file": "ext-se-day.jpg",
+    "thumb": "ext-se-day_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 21.3,
+    "sunHours": 10.5,
+    "note": "手前の周辺街区（概略の箱）は視線を遮るため非表示",
+    "variant": "day",
+    "ev": -4.2,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        62,
+        12,
+        92
+      ],
+      "target": [
+        2,
+        9,
+        4
+      ],
+      "fov": 45,
+      "twoPoint": true,
+      "shiftY": 0.086
+    },
+    "hiddenCityBlocks": 2
+  },
+  {
+    "id": "ext-se-dusk",
+    "kind": "still",
+    "title": "外観 南東から（夕景 17:18）",
+    "preset": "南東から",
+    "file": "ext-se-dusk.jpg",
+    "thumb": "ext-se-dusk_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 23.7,
+    "sunHours": 17.3,
+    "note": "手前の周辺街区（概略の箱）は視線を遮るため非表示",
+    "variant": "dusk",
+    "ev": 0.3,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        62,
+        12,
+        92
+      ],
+      "target": [
+        2,
+        9,
+        4
+      ],
+      "fov": 45,
+      "twoPoint": true,
+      "shiftY": 0.086
+    },
+    "hiddenCityBlocks": 2
+  },
+  {
+    "id": "ext-street",
+    "kind": "still",
+    "title": "新宿通り 歩道から",
+    "preset": "新宿通り 歩道",
+    "file": "ext-street.jpg",
+    "thumb": "ext-street_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.8,
+    "sunHours": 10.5,
+    "note": "カメラの目の前の街路樹（低ポリゴン）は非表示",
+    "variant": "day",
+    "ev": -4.2,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        -3,
+        -3.95,
+        29.4
+      ],
+      "target": [
+        1,
+        1.6,
+        17
+      ],
+      "fov": 45,
+      "twoPoint": false,
+      "shiftY": 0.0
+    }
+  },
+  {
+    "id": "balcony",
+    "kind": "still",
+    "title": "2F 南面バルコニー",
+    "preset": "2F バルコニー",
+    "file": "balcony.jpg",
+    "thumb": "balcony_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.2,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": -3.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        -11.6,
+        1.4,
+        21.2
+      ],
+      "target": [
+        8,
+        0.8,
+        19
+      ],
+      "fov": 45,
+      "twoPoint": true,
+      "shiftY": -0.0367
+    }
+  },
+  {
+    "id": "ev-hall",
+    "kind": "still",
+    "title": "EVホール → 入口",
+    "preset": "EVホール → 入口",
+    "file": "ev-hall.jpg",
+    "thumb": "ev-hall_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 27.8,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        0,
+        1.55,
+        -7.5
+      ],
+      "target": [
+        1.2236672123300604e-15,
+        1.1501066581336583,
+        2.492001066609779
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0333
+    }
+  },
+  {
+    "id": "entrance",
+    "kind": "still",
+    "title": "エントランス・受付",
+    "preset": "エントランス受付",
+    "file": "entrance.jpg",
+    "thumb": "entrance_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 29.8,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        1.6,
+        1.55,
+        3.7
+      ],
+      "target": [
+        4.363003792767477,
+        1.7499866669333308,
+        13.308632336300594
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": 0.0166
+    }
+  },
+  {
+    "id": "lounge",
+    "kind": "still",
+    "title": "コミュニケーションラウンジ",
+    "preset": "ラウンジ",
+    "file": "lounge.jpg",
+    "thumb": "lounge_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 27.2,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        9.2,
+        1.55,
+        10.6
+      ],
+      "target": [
+        0.9556467231336612,
+        0.750853060308273,
+        16.202856701273433
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0667
+    }
+  },
+  {
+    "id": "it-south",
+    "kind": "still",
+    "title": "IT・システムG 執務エリア（南）",
+    "preset": "IT 執務（南）",
+    "file": "it-south.jpg",
+    "thumb": "it-south_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.4,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        13.9,
+        1.55,
+        10.5
+      ],
+      "target": [
+        23.168027876134623,
+        0.750853060308273,
+        14.169471822479755
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0667
+    }
+  },
+  {
+    "id": "it-east",
+    "kind": "still",
+    "title": "IT・システムG 執務エリア（東）",
+    "preset": "IT 執務（東）",
+    "file": "it-east.jpg",
+    "thumb": "it-east_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.0,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        23.2,
+        1.55,
+        -11
+      ],
+      "target": [
+        30.453268206413096,
+        0.5516658335317185,
+        -4.188727782719367
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0835
+    }
+  },
+  {
+    "id": "soc",
+    "kind": "still",
+    "title": "セキュリティ監視室（SOC/CSIRT）",
+    "preset": "SOC",
+    "file": "soc.jpg",
+    "thumb": "soc_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 26.4,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.9000000000000001,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        24.9,
+        1.55,
+        -13.1
+      ],
+      "target": [
+        15.222984665165761,
+        1.0502083072932167,
+        -15.570947687282004
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0416
+    }
+  },
+  {
+    "id": "lab",
+    "kind": "still",
+    "title": "検証ラボ",
+    "preset": "検証ラボ",
+    "file": "lab.jpg",
+    "thumb": "lab_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.1,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        21.8,
+        1.55,
+        -9.9
+      ],
+      "target": [
+        12.840513825465578,
+        0.5516658335317185,
+        -5.572074818069447
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0835
+    }
+  },
+  {
+    "id": "agile",
+    "kind": "still",
+    "title": "アジャイル開発エリア",
+    "preset": "アジャイル開発",
+    "file": "agile.jpg",
+    "thumb": "agile_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.6,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        31.8,
+        1.55,
+        3.1
+      ],
+      "target": [
+        41.06802787613462,
+        0.750853060308273,
+        6.769471822479755
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0667
+    }
+  },
+  {
+    "id": "risk-south",
+    "kind": "still",
+    "title": "リスク管理G 執務エリア（南）",
+    "preset": "リスク管理 執務",
+    "file": "risk-south.jpg",
+    "thumb": "risk-south_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.9,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        -13.8,
+        1.55,
+        10.5
+      ],
+      "target": [
+        -23.068027876134625,
+        0.750853060308273,
+        14.169471822479755
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0667
+    }
+  },
+  {
+    "id": "monitoring",
+    "kind": "still",
+    "title": "モニタリングルーム",
+    "preset": "モニタリング室",
+    "file": "monitoring.jpg",
+    "thumb": "monitoring_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 28.5,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.9000000000000001,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        -21.8,
+        1.55,
+        -4.8
+      ],
+      "target": [
+        -13.719940662040683,
+        1.0502083072932167,
+        -10.670506737834284
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0416
+    }
+  },
+  {
+    "id": "meeting-a",
+    "kind": "still",
+    "title": "大会議室 A",
+    "preset": "大会議室 A",
+    "file": "meeting-a.jpg",
+    "thumb": "meeting-a_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 29.5,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        -34.75,
+        1.55,
+        9.15
+      ],
+      "target": [
+        -31.059325879472016,
+        0.5516658335317185,
+        -0.09025180545027567
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0835
+    }
+  },
+  {
+    "id": "booths",
+    "kind": "still",
+    "title": "集中エリア・Webブース列（IT）",
+    "preset": "Webブース列",
+    "file": "booths.jpg",
+    "thumb": "booths_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 29.3,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        37,
+        1.55,
+        -11.5
+      ],
+      "target": [
+        27.0843211641858,
+        1.0502083072932167,
+        -12.695625982022646
+      ],
+      "fov": 62,
+      "twoPoint": true,
+      "shiftY": -0.0416
+    }
+  },
+  {
+    "id": "axo",
+    "kind": "still",
+    "title": "全体アクソメ（天井・上階を外して俯瞰）",
+    "preset": "全体俯瞰",
+    "file": "axo.jpg",
+    "thumb": "axo_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 16.2,
+    "sunHours": 10.5,
+    "note": "天井・天井設備・庇・上階・周辺街区を非表示。画角はプリセット（45°）より狭い 30°",
+    "variant": "day",
+    "ev": -3.7,
+    "quality": "preview",
+    "camera": {
+      "pos": [
+        40,
+        58,
+        72
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 30.0,
+      "twoPoint": false,
+      "shiftY": 0.0
+    }
+  },
+  {
+    "id": "plan",
+    "kind": "still",
+    "title": "平面図（真上からの正投影）",
+    "preset": null,
+    "file": "plan.jpg",
+    "thumb": "plan_thumb.jpg",
+    "w": 640,
+    "h": 360,
+    "samples": 32,
+    "seconds": 17.2,
+    "sunHours": 10.5,
+    "note": "天井・天井設備・庇・上階・周辺街区を非表示。画像の上が北",
+    "variant": "day",
+    "ev": -3.7,
+    "quality": "preview",
+    "ortho": {
+      "center": [
+        0.0,
+        1.2
+      ],
+      "width": 84.0,
+      "height": 47.25,
+      "up": "北（three.js −Z）"
+    }
+  },
+  {
+    "id": "pano-entrance",
+    "kind": "pano",
+    "title": "エントランス・受付 360°",
+    "preset": "エントランス受付",
+    "file": "pano_entrance.jpg",
+    "thumb": "pano_entrance_thumb.jpg",
+    "w": 1024,
+    "h": 512,
+    "samples": 16,
+    "seconds": 31.9,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "pos": [
+      0.0,
+      1.55,
+      6.4
+    ],
+    "heading": 163.96,
+    "clearance": 2.65,
+    "mapping": "正距円筒。画像中央 = heading（北から時計回り）、右へ時計回り、上端 = 天頂"
+  },
+  {
+    "id": "pano-lounge",
+    "kind": "pano",
+    "title": "コミュニケーションラウンジ 360°",
+    "preset": "ラウンジ",
+    "file": "pano_lounge.jpg",
+    "thumb": "pano_lounge_thumb.jpg",
+    "w": 1024,
+    "h": 512,
+    "samples": 16,
+    "seconds": 30.2,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "pos": [
+      2.0,
+      1.55,
+      13.5
+    ],
+    "heading": 235.8,
+    "clearance": 1.8,
+    "mapping": "正距円筒。画像中央 = heading（北から時計回り）、右へ時計回り、上端 = 天頂"
+  },
+  {
+    "id": "pano-it-south",
+    "kind": "pano",
+    "title": "IT・システムG 執務エリア（南）360°",
+    "preset": "IT 執務（南）",
+    "file": "pano_it-south.jpg",
+    "thumb": "pano_it-south_thumb.jpg",
+    "w": 1024,
+    "h": 512,
+    "samples": 16,
+    "seconds": 30.1,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "pos": [
+      25.0,
+      1.55,
+      14.5
+    ],
+    "heading": 111.6,
+    "clearance": 0.95,
+    "mapping": "正距円筒。画像中央 = heading（北から時計回り）、右へ時計回り、上端 = 天頂"
+  },
+  {
+    "id": "pano-soc",
+    "kind": "pano",
+    "title": "セキュリティ監視室（SOC/CSIRT）360°",
+    "preset": "SOC",
+    "file": "pano_soc.jpg",
+    "thumb": "pano_soc_thumb.jpg",
+    "w": 1024,
+    "h": 512,
+    "samples": 16,
+    "seconds": 28.8,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.9000000000000001,
+    "quality": "preview",
+    "pos": [
+      20.8,
+      1.55,
+      -14.4
+    ],
+    "heading": 284.32,
+    "clearance": 0.88,
+    "mapping": "正距円筒。画像中央 = heading（北から時計回り）、右へ時計回り、上端 = 天頂"
+  },
+  {
+    "id": "pano-risk-south",
+    "kind": "pano",
+    "title": "リスク管理G 執務エリア（南）360°",
+    "preset": "リスク管理 執務",
+    "file": "pano_risk-south.jpg",
+    "thumb": "pano_risk-south_thumb.jpg",
+    "w": 1024,
+    "h": 512,
+    "samples": 16,
+    "seconds": 30.0,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "pos": [
+      -25.0,
+      1.55,
+      14.5
+    ],
+    "heading": 248.4,
+    "clearance": 0.69,
+    "mapping": "正距円筒。画像中央 = heading（北から時計回り）、右へ時計回り、上端 = 天頂"
+  },
+  {
+    "id": "pano-meeting-a",
+    "kind": "pano",
+    "title": "大会議室 A 360°",
+    "preset": "大会議室 A",
+    "file": "pano_meeting-a.jpg",
+    "thumb": "pano_meeting-a_thumb.jpg",
+    "w": 1024,
+    "h": 512,
+    "samples": 16,
+    "seconds": 29.9,
+    "sunHours": 10.5,
+    "note": "",
+    "variant": "day",
+    "ev": 1.6,
+    "quality": "preview",
+    "pos": [
+      -32.4,
+      1.55,
+      8.6
+    ],
+    "heading": 21.77,
+    "clearance": 0.99,
+    "mapping": "正距円筒。画像中央 = heading（北から時計回り）、右へ時計回り、上端 = 天頂"
+  }
+]

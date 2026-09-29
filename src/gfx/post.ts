@@ -5,6 +5,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { SelectiveBloomPass } from './bloom';
+import { constrainedDevice } from './device';
 
 /**
  * ポストエフェクト（EffectComposer）。
@@ -38,9 +39,7 @@ export function initialQuality(): Quality {
   } catch {
     // ストレージ不可（プライベートモード等）は既定値
   }
-  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  const mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  return mobile || (mem !== undefined && mem <= 4) ? 'standard' : 'high';
+  return constrainedDevice() ? 'standard' : 'high';
 }
 
 export function saveQuality(q: Quality): void {
@@ -55,6 +54,8 @@ export function saveQuality(q: Quality): void {
 export interface AOParams {
   radius: number;
   thickness: number;
+  /** AO のガンマ（大きいほど濃く締まる） */
+  power: number;
   intensity: number;
 }
 
@@ -122,13 +123,14 @@ class AOPass extends Pass {
     super();
     this.needsSwap = false;
     this.gtao = new GTAOPass(scene, camera, 1, 1);
-    // G バッファを自前で描かず、ScenePass の深度を使う（法線は深度から復元）
+    // G バッファを自前で描かず、ScenePass の深度を使う（法線は深度から復元）。
+    // GTAOPass がコンストラクタで作る G バッファ用ターゲットは一度も描画先にならないので GPU メモリは確保されない
     this.gtao.setGBuffer(depth);
     this.gtao.output = GTAOPass.OUTPUT.Off;
     const mat = this.gtao.gtaoMaterial;
     if (mat.fragmentShader.includes(VIEWDIR_SRC)) mat.fragmentShader = mat.fragmentShader.replace(VIEWDIR_SRC, VIEWDIR_FIX);
-    this.gtao.updateGtaoMaterial({ samples: 16, distanceExponent: 1.4, distanceFallOff: 1, scale: 1 });
-    this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+    this.gtao.updateGtaoMaterial({ samples: 16, distanceExponent: 1.4, distanceFallOff: 1 });
+    this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 8, rings: 2, samples: 16 });
   }
 
   get texture(): THREE.Texture {
@@ -148,7 +150,7 @@ class AOPass extends Pass {
   }
 
   setParams(p: AOParams): void {
-    this.gtao.updateGtaoMaterial({ radius: p.radius, thickness: p.thickness });
+    this.gtao.updateGtaoMaterial({ radius: p.radius, thickness: p.thickness, scale: p.power });
   }
 
   setSize(w: number, h: number): void {
@@ -156,7 +158,7 @@ class AOPass extends Pass {
   }
 
   render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget): void {
-    this.gtao.render(renderer, writeBuffer, readBuffer);
+    this.gtao.render(renderer, writeBuffer, readBuffer, 0, false);
   }
 
   dispose(): void {
@@ -190,6 +192,7 @@ class CompositePass extends Pass {
         tBloom: { value: this.black },
         aoIntensity: { value: 0 },
         bloomIntensity: { value: 0 },
+        view: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -200,11 +203,17 @@ class CompositePass extends Pass {
         uniform sampler2D tBloom;
         uniform float aoIntensity;
         uniform float bloomIntensity;
+        uniform int view;
         varying vec2 vUv;
         void main() {
           vec4 c = texture2D(tScene, vUv);
-          c.rgb *= mix(1.0, texture2D(tAO, vUv).r, aoIntensity);
-          c.rgb += texture2D(tBloom, vUv).rgb * bloomIntensity;
+          float ao = texture2D(tAO, vUv).r;
+          vec3 bloom = texture2D(tBloom, vUv).rgb;
+          c.rgb *= mix(1.0, ao, aoIntensity);
+          c.rgb += bloom * bloomIntensity;
+          // 検証用の表示切替（1 = AO のみ、2 = ブルームのみ）
+          if (view == 1) c = vec4(vec3(ao), 1.0);
+          if (view == 2) c = vec4(bloom, 1.0);
           gl_FragColor = c;
         }`,
       depthTest: false,
@@ -285,6 +294,11 @@ export class PostFX {
     if (this.quality === 'high') this.composite.material.uniforms.aoIntensity.value = p.intensity;
   }
 
+  /** 検証用：合成結果の代わりに AO またはブルーム成分だけを表示する */
+  debugView(v: 'ao' | 'bloom' | null): void {
+    this.composite.material.uniforms.view.value = v === 'ao' ? 1 : v === 'bloom' ? 2 : 0;
+  }
+
   /** w, h は CSS 画素 */
   setSize(w: number, h: number, pixelRatio: number): void {
     this.ao.scale = 1 / Math.max(1, pixelRatio);
@@ -299,10 +313,5 @@ export class PostFX {
       return;
     }
     this.composer.render(dt);
-  }
-
-  dispose(): void {
-    for (const p of this.composer.passes) p.dispose();
-    this.composer.dispose();
   }
 }

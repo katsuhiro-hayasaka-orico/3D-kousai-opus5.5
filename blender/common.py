@@ -7,10 +7,11 @@
    1. 読み込み：factory settings（空）→ glTF 読み込み
    2. 構成：2F の内容（躯体・天井・庇・家具・人物）を 1 つのコレクションにまとめ、
       3F〜12F をコレクションインスタンスで積層。屋上スラブ・パラペット・塔屋・目隠しルーバーを追加。
+      室内のショットとベイクでは上階の代わりに 3F スラブだけの蓋を使う（set_visibility の 'upper'）。
       ゴースト（L_upper）の他階は非表示、周辺街区の箱だけ残して外装マテリアルを与える。
    3. マテリアル：three.js のマテリアルキー（'#rrggbb' の派生は除いたキー）で規則を引き、物理ベース化する。
       規則に当たらないものは glTF 読み込み時の Principled 設定のまま。
-   4. 照明：Nishita 天空（太陽ディスクなし）＋ 太陽ランプ（meta.json の方位・高度）。窓面にポータル。
+   4. 照明：Nishita 天空（太陽ディスクなし）＋ 太陽ランプ（meta.json の方位・高度）。2F の窓面にポータル。
    5. カメラ（three.js 座標 → Blender 座標、fov は縦画角）と Cycles CPU 設定。
 
 座標：three.js (x=東, y=上, z=南) → Blender (x, −z, y)。Blender の +Y が北。
@@ -29,9 +30,9 @@ import sys
 import time
 from pathlib import Path
 
+import bpy  # bmesh / mathutils は bpy の後で読み込む（bpy モジュール版の制約）
 import bmesh
-import bpy
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
 # ------------------------------------------------------------
 # パス
@@ -51,13 +52,15 @@ RENDERS_DIR = ROOT / 'src' / 'assets' / 'renders'
 # ------------------------------------------------------------
 
 #: 天井 LED（light.panel）下向き発光面の輝度。机上面（0.75 m）照度 ≒ 750 lx になるよう calibrate.py で合わせた値
-LED_RADIANCE = 30.0
+LED_RADIANCE = 14.0
+#: コア（EV ホール・廊下・トイレ等）のダウンライト（φ130 の発光面）。約 1,460 lm/台
+DOWNLIGHT_RADIANCE = 35.0
 #: 吊り下げ型ライン照明の上向き成分（下向きに対する比）
 PENDANT_UPLIGHT = 0.35
 #: 暖色の間接照明・ペンダント・デスクライト（light.warm）
 WARM_RADIANCE = 8.0
 #: 機器の状態表示 LED（light.led / ledBlue / ledRed）
-STATUS_LED_RADIANCE = 4.0
+STATUS_LED_RADIANCE = 1.2
 #: 誘導灯（exitSign）
 EXIT_SIGN_RADIANCE = 0.9
 #: 画面の白の輝度：PC モニター、会議室ディスプレイ、SOC ビデオウォール、ロック画面
@@ -70,6 +73,10 @@ PLATE_RADIANCE = 0.04
 CITY_WINDOW_RADIANCE = 0.12
 #: 大気圏外の太陽照度（≒ 128 klx）
 SUN_E0 = 128.0
+#: 太陽ランプの角直径（度）
+SUN_ANGLE_DEG = 0.53
+#: 周辺街区が素通しにする「太陽へ向かう影の光線」の円錐の半頂角（度）。ランプの角半径 0.265° に余裕を持たせた値
+CITY_SUN_CONE_DEG = 0.5
 
 # ------------------------------------------------------------
 # 基本ユーティリティ
@@ -80,6 +87,32 @@ _T0 = time.time()
 
 def log(msg: str) -> None:
     print(f'[{time.time() - _T0:7.1f}s] {msg}', flush=True)
+
+
+class blender_log:
+    """
+    Blender 本体の大量の出力（Cycles の 1 サンプルごとの進捗、glTF 読み込みの INFO）を blender/out/blender.log へ逃がす。
+    OS レベルで fd 1・2 を差し替えるので、C++ 側の出力にも効く（失敗は Python の例外として呼び出し側に届く）。
+    """
+
+    def __enter__(self):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        ensure_dir(OUT)
+        self._saved = [os.dup(1), os.dup(2)]
+        self._f = open(OUT / 'blender.log', 'ab')
+        os.dup2(self._f.fileno(), 1)
+        os.dup2(self._f.fileno(), 2)
+        return self
+
+    def __exit__(self, *exc):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        for fd, saved in zip((1, 2), self._saved):
+            os.dup2(saved, fd)
+            os.close(saved)
+        self._f.close()
+        return False
 
 
 def load_meta() -> dict:
@@ -97,13 +130,22 @@ def base_key(name: str) -> str:
     return name.split('#', 1)[0]
 
 
-def descendants(ob: bpy.types.Object) -> list[bpy.types.Object]:
+def children_map() -> dict[str, list[bpy.types.Object]]:
+    """親名 → 子の一覧（Object.children は全オブジェクト走査で遅いので一括で作る）"""
+    m: dict[str, list[bpy.types.Object]] = {}
+    for o in bpy.data.objects:
+        if o.parent is not None:
+            m.setdefault(o.parent.name, []).append(o)
+    return m
+
+
+def descendants(ob: bpy.types.Object, cmap: dict[str, list[bpy.types.Object]]) -> list[bpy.types.Object]:
     out = []
     stack = [ob]
     while stack:
         o = stack.pop()
         out.append(o)
-        stack.extend(o.children)
+        stack.extend(cmap.get(o.name, ()))
     return out
 
 
@@ -157,9 +199,7 @@ def sun_irradiance_rgb(elevation_deg: float) -> tuple[float, tuple[float, float,
 # シーン構築
 # ------------------------------------------------------------
 
-LAYERS_2F = ('L_structure', 'L_ceiling', 'L_eaves', 'L_furniture', 'L_people')
-
-#: 2F の内容を分けるサブコレクション（インスタンスにもそのまま入る）
+#: 2F の内容（glTF の最上位ノード → サブコレクション）。インスタンスにもそのまま入る
 SUB_OF_LAYER = {
     'L_structure': 'F2_structure',
     'L_ceiling': 'F2_ceiling',
@@ -191,7 +231,8 @@ def reset_scene() -> None:
 
 def import_glb() -> None:
     t = time.time()
-    bpy.ops.import_scene.gltf(filepath=str(GLB), loglevel=50)
+    with blender_log():
+        bpy.ops.import_scene.gltf(filepath=str(GLB))
     log(f'glTF 読み込み {time.time() - t:.1f}s（{len(bpy.data.objects)} objects）')
 
 
@@ -201,10 +242,12 @@ def _new_collection(name: str, parent: bpy.types.Collection) -> bpy.types.Collec
     return c
 
 
-def _move_tree(root: bpy.types.Object, col: bpy.types.Collection) -> None:
-    for o in descendants(root):
-        for uc in list(o.users_collection):
-            uc.objects.unlink(o)
+def _move_tree(root: bpy.types.Object, col: bpy.types.Collection, cmap) -> None:
+    """読み込み直後はすべてシーン直下のコレクションにあるので、そこから外して col へ入れる"""
+    master = bpy.context.scene.collection
+    for o in descendants(root, cmap):
+        if master.objects.get(o.name) is not None:
+            master.objects.unlink(o)
         col.objects.link(o)
 
 
@@ -212,19 +255,20 @@ def organize_collections(h: SceneHandles) -> None:
     """読み込んだ最上位ノードをコレクションへ振り分ける"""
     sc = bpy.context.scene
     master = sc.collection
+    cmap = children_map()
     f2 = _new_collection('F2', master)
     h.col['F2'] = f2
     for layer, sub in SUB_OF_LAYER.items():
         c = _new_collection(sub, f2)
         h.col[sub] = c
-        _move_tree(bpy.data.objects[layer], c)
+        _move_tree(bpy.data.objects[layer], c, cmap)
     site = _new_collection('Site', master)
     h.col['Site'] = site
-    _move_tree(bpy.data.objects['L_site'], site)
+    _move_tree(bpy.data.objects['L_site'], site, cmap)
     # ゴースト：他階の半透明箱は捨て、周辺街区（ghost.city）だけ実体化する
     ghost = _new_collection('Ghost', master)
     h.col['Ghost'] = ghost
-    _move_tree(bpy.data.objects['L_upper'], ghost)
+    _move_tree(bpy.data.objects['L_upper'], ghost, cmap)
     ghost.hide_render = True
     ghost.hide_viewport = True
     city = _new_collection('City', master)
@@ -232,7 +276,7 @@ def organize_collections(h: SceneHandles) -> None:
     for o in list(ghost.objects):
         if o.type == 'MESH' and o.data.materials and o.data.materials[0].name == 'ghost.city':
             h.city_blocks = split_city_blocks(o, city)
-    for name in ('Upper', 'Roof', 'Lights'):
+    for name in ('Upper', 'Roof', 'Cap', 'Lights'):
         h.col[name] = _new_collection(name, master)
 
 
@@ -277,6 +321,7 @@ def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection) -> list[
         nb.free()
         me.materials.append(mat)
         ob = bpy.data.objects.new(f'city.{i}', me)
+        # 影の光線の可視性（visible_shadow）は切らない。直射日光の影だけを落とさない仕組みは city_material にある
         col.objects.link(ob)
         out.append(ob)
     bm.free()
@@ -380,6 +425,19 @@ def build_roof(h: SceneHandles) -> None:
     bb.build('roof', h.col['Roof'])
 
 
+def build_cap(h: SceneHandles) -> None:
+    """
+    3F スラブだけの蓋。室内のショットとベイクでは上階インスタンスの代わりに使う
+    （上階の照明がスラブ越しに光源サンプルを奪わないように。2F の窓に入る天空光は上階に遮られないので結果は同じ）
+    """
+    b = h.meta['building']
+    P = b['plate']
+    y = b['floorToFloor']
+    bb = BoxBuilder()
+    bb.box('floor.slabEdge', P['x0'], y - 0.32, P['z0'], P['x1'], y - 0.005, P['z1'])
+    bb.build('cap', h.col['Cap'])
+
+
 def add_portals(h: SceneHandles) -> None:
     """2F の各カーテンウォール面に天空光のポータル（室内側向き）を置く"""
     b = h.meta['building']
@@ -414,15 +472,18 @@ def build_scene(*, upper: bool = True, variant: str = 'day') -> SceneHandles:
     reset_scene()
     import_glb()
     organize_collections(h)
+    log('コレクション構成')
+    build_cap(h)
     if upper:
         build_upper_floors(h)
         build_roof(h)
+        log('上階インスタンス・屋上')
     upgrade_materials(h)
+    log(f'マテリアル（規則 {sum(h.material_stats.values())} 件適用、規則なし {len(h.unmatched)} 件）')
     add_portals(h)
     setup_world(h)
     set_variant(h, variant)
     setup_color_management()
-    log(f'シーン構築完了（マテリアル規則 {sum(h.material_stats.values())} 件適用、未対応 {len(h.unmatched)} 件）')
     return h
 
 
@@ -484,20 +545,47 @@ def _replace_surface(nt, out, shader_socket) -> None:
     nt.links.new(shader_socket, out.inputs['Surface'])
 
 
+def _symmetric_fresnel(nt, ior: float):
+    """
+    表裏対称の Schlick 近似 F = F0 + (1−F0)(1−|N·I|)^5。
+    Fresnel ノードは裏面で IOR を反転するため、屈折させずに素通しするガラス箱の出口面で全反射が起き、光が閉じ込められる。
+    """
+    geo = nt.nodes.new('ShaderNodeNewGeometry')
+    dot = nt.nodes.new('ShaderNodeVectorMath')
+    dot.operation = 'DOT_PRODUCT'
+    nt.links.new(geo.outputs['Normal'], dot.inputs[0])
+    nt.links.new(geo.outputs['Incoming'], dot.inputs[1])
+    f0 = ((ior - 1) / (ior + 1)) ** 2
+    ops = [('ABSOLUTE', None), ('SUBTRACT', None), ('POWER', 5.0), ('MULTIPLY', 1.0 - f0), ('ADD', f0)]
+    sock = dot.outputs['Value']
+    for op, val in ops:
+        m = nt.nodes.new('ShaderNodeMath')
+        m.operation = op
+        m.use_clamp = op == 'ADD'
+        if op == 'SUBTRACT':
+            m.inputs[0].default_value = 1.0
+            nt.links.new(sock, m.inputs[1])
+        else:
+            nt.links.new(sock, m.inputs[0])
+            if val is not None:
+                m.inputs[1].default_value = val
+        sock = m.outputs[0]
+    return sock
+
+
 def _thin_glass(nt, out, tint, ior: float, rough: float) -> None:
     """
-    薄板ガラス：Fresnel で透過（Transparent）と鏡面反射（Glossy）を混ぜる。
-    屈折を追わないので影の光線が素通りし、窓越しの直射日光・天空光が室内に届く（ガラス箱 2 面で透過率 ≒ tint²×0.92）。
+    薄板ガラス：Fresnel（表裏対称）で透過（Transparent）と鏡面反射（Glossy）を混ぜる。
+    屈折を追わないので影の光線が素通りし、窓越しの直射日光・天空光が室内に届く（ガラス箱 2 面で透過率 ≒ tint²×(1−F0)²）。
     """
-    fres = nt.nodes.new('ShaderNodeFresnel')
-    fres.inputs['IOR'].default_value = ior
+    fres = _symmetric_fresnel(nt, ior)
     gl = nt.nodes.new('ShaderNodeBsdfGlossy')
     gl.distribution = 'GGX'
     gl.inputs['Roughness'].default_value = rough
     tr = nt.nodes.new('ShaderNodeBsdfTransparent')
     tr.inputs['Color'].default_value = (*tint, 1.0)
     mix = nt.nodes.new('ShaderNodeMixShader')
-    nt.links.new(fres.outputs['Fac'], mix.inputs['Fac'])
+    nt.links.new(fres, mix.inputs['Fac'])
     nt.links.new(tr.outputs[0], mix.inputs[1])
     nt.links.new(gl.outputs[0], mix.inputs[2])
     _replace_surface(nt, out, mix.outputs[0])
@@ -505,8 +593,7 @@ def _thin_glass(nt, out, tint, ior: float, rough: float) -> None:
 
 def _frosted_film(nt, out) -> None:
     """すりガラス調フィルム：拡散透過が主、わずかに素通し、表面はやや粗い鏡面"""
-    fres = nt.nodes.new('ShaderNodeFresnel')
-    fres.inputs['IOR'].default_value = 1.5
+    fres = _symmetric_fresnel(nt, 1.5)
     gl = nt.nodes.new('ShaderNodeBsdfGlossy')
     gl.inputs['Roughness'].default_value = 0.25
     tl = nt.nodes.new('ShaderNodeBsdfTranslucent')
@@ -523,16 +610,16 @@ def _frosted_film(nt, out) -> None:
     nt.links.new(m1.outputs[0], m2.inputs[1])
     nt.links.new(tr.outputs[0], m2.inputs[2])
     m3 = nt.nodes.new('ShaderNodeMixShader')
-    nt.links.new(fres.outputs['Fac'], m3.inputs['Fac'])
+    nt.links.new(fres, m3.inputs['Fac'])
     nt.links.new(m2.outputs[0], m3.inputs[1])
     nt.links.new(gl.outputs[0], m3.inputs[2])
     _replace_surface(nt, out, m3.outputs[0])
 
 
-def _translucent_mix(nt, p, out, amount: float, tint_from_base: bool = True, transparent: float = 0.0) -> None:
-    """Principled に拡散透過（葉・ブラインド生地）と、必要なら素通し（開口率）を混ぜる"""
+def _translucent_mix(nt, p, out, amount: float, transparent: float = 0.0) -> None:
+    """Principled に拡散透過（葉・ブラインド生地、色はベースカラーと同じ）と、必要なら素通し（開口率）を混ぜる"""
     tl = nt.nodes.new('ShaderNodeBsdfTranslucent')
-    if tint_from_base and p.inputs['Base Color'].is_linked:
+    if p.inputs['Base Color'].is_linked:
         nt.links.new(p.inputs['Base Color'].links[0].from_socket, tl.inputs['Color'])
     else:
         c = _base_color(p)
@@ -550,52 +637,6 @@ def _translucent_mix(nt, p, out, amount: float, tint_from_base: bool = True, tra
         nt.links.new(tr.outputs[0], m2.inputs[2])
         shader = m2.outputs[0]
     _replace_surface(nt, out, shader)
-
-
-def _facing_emission(nt, p, radiance: float, down: float = 1.0, up: float = 0.0, side: float = 0.0) -> None:
-    """
-    面の向きで発光量を変える（天井照明の箱は下面だけ光らせる）。
-    world 法線 Z から：下向き×down、上向き×up、側面×side。
-    """
-    geo = nt.nodes.new('ShaderNodeNewGeometry')
-    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
-    nt.links.new(geo.outputs['True Normal'], sep.inputs[0])
-
-    def clamp01(sock, mul):
-        m = nt.nodes.new('ShaderNodeMath')
-        m.operation = 'MULTIPLY'
-        m.use_clamp = True
-        nt.links.new(sock, m.inputs[0])
-        m.inputs[1].default_value = mul
-        return m.outputs[0]
-
-    dn = clamp01(sep.outputs['Z'], -1.0)  # max(−Nz, 0)
-    upv = clamp01(sep.outputs['Z'], 1.0)  # max(Nz, 0)
-    # 側面 = 1 − |Nz|
-    ab = nt.nodes.new('ShaderNodeMath')
-    ab.operation = 'ABSOLUTE'
-    nt.links.new(sep.outputs['Z'], ab.inputs[0])
-    sd = nt.nodes.new('ShaderNodeMath')
-    sd.operation = 'SUBTRACT'
-    sd.inputs[0].default_value = 1.0
-    nt.links.new(ab.outputs[0], sd.inputs[1])
-    acc = None
-    for sock, w in ((dn, down), (upv, up), (sd.outputs[0], side)):
-        if w <= 0:
-            continue
-        m = nt.nodes.new('ShaderNodeMath')
-        m.operation = 'MULTIPLY'
-        nt.links.new(sock, m.inputs[0])
-        m.inputs[1].default_value = w * radiance
-        if acc is None:
-            acc = m.outputs[0]
-        else:
-            a = nt.nodes.new('ShaderNodeMath')
-            a.operation = 'ADD'
-            nt.links.new(acc, a.inputs[0])
-            nt.links.new(m.outputs[0], a.inputs[1])
-            acc = a.outputs[0]
-    nt.links.new(acc, p.inputs['Emission Strength'])
 
 
 # ---- 規則（キー → 関数）。引数：(material, node_tree, principled, output, key) ----
@@ -624,17 +665,29 @@ def r_water(m, nt, p, out, key):
 
 
 def r_led_panel(m, nt, p, out, key):
+    # 下向き面だけに残した発光面（split_led_faces）。一定値なのでライトツリーの見積もりが正確
     p.inputs['Base Color'].default_value = (0.9, 0.9, 0.9, 1)
-    _set(p, roughness=0.4)
-    _facing_emission(nt, p, LED_RADIANCE, down=1.0)
+    _set(p, roughness=0.4, emission_strength=LED_RADIANCE)
     m.cycles.emission_sampling = 'FRONT'
 
 
-def r_led_pendant(m, nt, p, out, key):
+def r_downlight(m, nt, p, out, key):
     p.inputs['Base Color'].default_value = (0.9, 0.9, 0.9, 1)
-    _set(p, roughness=0.4)
-    _facing_emission(nt, p, LED_RADIANCE, down=1.0, up=PENDANT_UPLIGHT)
+    _set(p, roughness=0.4, emission_strength=DOWNLIGHT_RADIANCE)
     m.cycles.emission_sampling = 'FRONT'
+
+
+def r_led_up(m, nt, p, out, key):
+    # 吊り下げ型ライン照明の上面（天井を照らす間接成分）
+    p.inputs['Base Color'].default_value = (0.9, 0.9, 0.9, 1)
+    _set(p, roughness=0.4, emission_strength=LED_RADIANCE * PENDANT_UPLIGHT)
+    m.cycles.emission_sampling = 'FRONT'
+
+
+def r_led_housing(m, nt, p, out, key):
+    # 器具の側面・上面（白の焼付塗装、発光なし）
+    p.inputs['Base Color'].default_value = (0.82, 0.82, 0.8, 1)
+    _set(p, roughness=0.4, emission_strength=0.0, metallic=0.0)
 
 
 def r_light_warm(m, nt, p, out, key):
@@ -774,8 +827,41 @@ def r_eye(m, nt, p, out, key):
     _set(p, roughness=0.08, coat=0.8, coat_rough=0.02)
 
 
+def _foliage_detail(nt, p) -> None:
+    """
+    低ポリゴンの樹冠を葉の塊に見せる：ワールド座標のノイズで色むら（×0.6〜1.25）と塊状のバンプを付ける。
+    """
+    geo = nt.nodes.new('ShaderNodeNewGeometry')
+    big = nt.nodes.new('ShaderNodeTexNoise')
+    big.inputs['Scale'].default_value = 1.5
+    big.inputs['Detail'].default_value = 4.0
+    nt.links.new(geo.outputs['Position'], big.inputs['Vector'])
+    rng = nt.nodes.new('ShaderNodeMapRange')
+    rng.inputs['From Min'].default_value = 0.3
+    rng.inputs['From Max'].default_value = 0.7
+    rng.inputs['To Min'].default_value = 0.6
+    rng.inputs['To Max'].default_value = 1.25
+    nt.links.new(big.outputs['Fac'], rng.inputs['Value'])
+    tint = nt.nodes.new('ShaderNodeVectorMath')
+    tint.operation = 'SCALE'
+    tint.inputs[0].default_value = _base_color(p)
+    nt.links.new(rng.outputs['Result'], tint.inputs['Scale'])
+    nt.links.new(tint.outputs['Vector'], p.inputs['Base Color'])
+    fine = nt.nodes.new('ShaderNodeTexNoise')
+    fine.inputs['Scale'].default_value = 9.0
+    fine.inputs['Detail'].default_value = 8.0
+    fine.inputs['Roughness'].default_value = 0.65
+    nt.links.new(geo.outputs['Position'], fine.inputs['Vector'])
+    bump = nt.nodes.new('ShaderNodeBump')
+    bump.inputs['Strength'].default_value = 0.8
+    bump.inputs['Distance'].default_value = 0.08
+    nt.links.new(fine.outputs['Fac'], bump.inputs['Height'])
+    nt.links.new(bump.outputs['Normal'], p.inputs['Normal'])
+
+
 def r_leaf(m, nt, p, out, key):
     _set(p, roughness=0.55, spec=0.4)
+    _foliage_detail(nt, p)
     _translucent_mix(nt, p, out, 0.3)
 
 
@@ -847,6 +933,11 @@ def r_matte(m, nt, p, out, key):
     _set(p, roughness=0.9, spec=0.3, metallic=0.0)
 
 
+def r_road_paint(m, nt, p, out, key):
+    # 区画線（溶融式塗料、ガラスビーズ入り）
+    _set(p, roughness=0.6, spec=0.4, metallic=0.0)
+
+
 RULES_EXACT = {
     'glass': r_glass_clear,
     'glass.cw': r_glass_cw,
@@ -854,6 +945,9 @@ RULES_EXACT = {
     'glass.film': r_glass_film,
     'water': r_water,
     'light.panel': r_led_panel,
+    'light.panel.up': r_led_up,
+    'light.panel.down': r_downlight,
+    'light.panel.housing': r_led_housing,
     'light.warm': r_light_warm,
     'light.led': r_status_led,
     'light.ledBlue': r_status_led,
@@ -913,6 +1007,18 @@ RULES_EXACT = {
     'leaf.dark': r_leaf,
     'hedge': r_leaf,
     'grass': r_matte,
+    'cardboard': r_matte,
+    'paper': r_matte,
+    'soil': r_matte,
+    'trunk': r_matte,
+    'floor.shaft': r_matte,
+    'lane': r_road_paint,
+    'laneYellow': r_road_paint,
+    'wall.cap': r_plastic,
+    'headset': r_plastic,
+    'pot.dark': r_ceramic,
+    'person.shoe': r_leather,
+    'person.mouth': r_skin,
     'blind': r_blind,
     'facade.panel': r_facade_panel,
     'facade.spandrel': r_spandrel,
@@ -932,7 +1038,6 @@ RULES_PREFIX = [
     ('felt.', r_fabric),
     ('plastic.', r_plastic),
     ('plate.', r_plate),
-    ('light.panel.pendant', r_led_pendant),
 ]
 
 
@@ -945,22 +1050,56 @@ def rule_for(key: str):
     return None
 
 
-def split_pendant_material() -> None:
-    """吊り下げ型ライン照明だけ上向き成分を持たせるため、専用マテリアルに差し替える"""
+def split_led_faces() -> None:
+    """
+    照明器具（light.panel の箱・円柱）の発光を下向きの面だけにする。側面・上面は器具の筐体マテリアルへ、
+    吊り下げ型ライン照明（linearPendant）の上面は上向き成分のマテリアルへ、ダウンライト（ceil.down）の下面は専用の輝度へ。
+    ライトツリーはマテリアル単位の一定の発光量で見積もるため、面の向きをシェーダーで切り替えるより
+    メッシュで分けたほうが無駄な光源サンプルが出ない。
+    """
     src = bpy.data.materials.get('light.panel')
     if src is None:
         return
-    pend = src.copy()
-    pend.name = 'light.panel.pendant'
+    housing = src.copy()
+    housing.name = 'light.panel.housing'
+    up = src.copy()
+    up.name = 'light.panel.up'
+    down = src.copy()
+    down.name = 'light.panel.down'
+    users: dict[str, list[bpy.types.Object]] = {}
     for o in bpy.data.objects:
-        if o.type == 'MESH' and 'linearPendant' in (o.parent.name if o.parent else '') + o.name:
-            for i, m in enumerate(o.data.materials):
-                if m == src:
-                    o.data.materials[i] = pend
+        if o.type == 'MESH' and src.name in o.data.materials:
+            users.setdefault(o.data.name, []).append(o)
+    for mesh_name, obs in users.items():
+        me = bpy.data.meshes[mesh_name]
+        m3 = obs[0].matrix_world.to_3x3()
+        if (m3 @ Vector((0, 0, 1))).normalized().z < 0.99:
+            raise RuntimeError(f'照明器具 {obs[0].name} が傾いている（面の向きの判定ができない）')
+        parents = [o.parent.name if o.parent else '' for o in obs]
+        pendant = any('linearPendant' in n for n in parents)
+        downlight = any(n.startswith('ceil.down') for n in parents)
+        led = list(me.materials).index(src)
+        target: dict[int, bpy.types.Material] = {}
+        for poly in me.polygons:
+            if poly.material_index != led:
+                continue
+            nz = poly.normal.z
+            if nz < -0.5:
+                if downlight:
+                    target[poly.index] = down
+            else:
+                target[poly.index] = up if (pendant and nz > 0.5) else housing
+        slots = {m.name: i for i, m in enumerate(me.materials)}
+        for m in set(target.values()):
+            if m.name not in slots:
+                me.materials.append(m)
+                slots[m.name] = len(me.materials) - 1
+        for idx, m in target.items():
+            me.polygons[idx].material_index = slots[m.name]
 
 
 def upgrade_materials(h: SceneHandles) -> None:
-    split_pendant_material()
+    split_led_faces()
     for m in bpy.data.materials:
         if not m.use_nodes or m.name.startswith('ghost') or m.name == 'city':
             continue
@@ -983,6 +1122,7 @@ def city_material() -> bpy.types.Material:
     """
     周辺街区の外装：ワールド座標から階（3.8 m）とマリオン（1.5 m）の格子を作り、
     スパンドレル帯・濃色ガラス・一部点灯した窓・屋上面を塗り分ける。
+    太陽へ向かう影の光線だけは素通しにする（直射日光の影を落とさない）。
     """
     m = bpy.data.materials.new('city')
     m.use_nodes = True
@@ -1050,7 +1190,27 @@ def city_material() -> bpy.types.Material:
     L(roof, m2.inputs['Fac'])
     L(m1.outputs[0], m2.inputs[1])
     L(top.outputs[0], m2.inputs[2])
-    L(m2.outputs[0], out.inputs['Surface'])
+    # 直射日光の影は落とさない（ブラウザ版と同じ。概略の箱なので、影を落とすと高さ 88 m の箱が 10:30 に南面を丸ごと日陰にする）。
+    # 太陽へ向かう影の光線（太陽方向 ±CITY_SUN_CONE_DEG）でだけ透明にし、天空光・室内照明の影の光線と
+    # カメラ・反射の光線には不透明のまま。太陽の向きと有効・無効は set_variant が設定する。
+    # visible_shadow=False（すべての影の光線から外す）だと天空の光源サンプリングだけが箱を素通りし、
+    # 箱に当たる BSDF サンプリングとの MIS で窓際・机上の天空光が 2〜3 倍に偏った（README §4）
+    lp = N('ShaderNodeLightPath')
+    sun_dir = N('ShaderNodeVectorMath')
+    sun_dir.name = 'sun_dir'
+    sun_dir.operation = 'DOT_PRODUCT'
+    L(geo.outputs['Incoming'], sun_dir.inputs[0])  # 影の光線では Incoming = −（光線の向き）
+    cone = math('LESS_THAN', sun_dir.outputs['Value'], -2.0)
+    cone.node.name = 'sun_cone'
+    see_through = math('MULTIPLY', lp.outputs['Is Shadow Ray'], cone)
+    clear = N('ShaderNodeBsdfTransparent')
+    m3 = N('ShaderNodeMixShader')
+    L(see_through, m3.inputs['Fac'])
+    L(m2.outputs[0], m3.inputs[1])
+    L(clear.outputs[0], m3.inputs[2])
+    L(m3.outputs[0], out.inputs['Surface'])
+    # 窓の発光は見た目だけ。広い面積が光源サンプルを奪わないよう、光源としては扱わない
+    m.cycles.emission_sampling = 'NONE'
     return m
 
 
@@ -1066,6 +1226,8 @@ VARIANTS = {
     'dusk': {'sun': 'dusk', 'sky': 0.18, 'lamp': True},
     # ライトマップ用：天空光のみ（直達日射はブラウザ側でリアルタイムに与える）。天空の分布は 10:30
     'bake': {'sun': 'default', 'sky': 1.0, 'lamp': False},
+    # 校正用：室内照明のみ（calibrate.py）
+    'night': {'sun': 'default', 'sky': 0.0, 'lamp': False},
 }
 
 
@@ -1086,7 +1248,7 @@ def setup_world(h: SceneHandles) -> None:
     nt.links.new(sky.outputs['Color'], bg.inputs['Color'])
     h.sky, h.background = sky, bg
     L = bpy.data.lights.new('sun', 'SUN')
-    L.angle = math.radians(0.53)
+    L.angle = math.radians(SUN_ANGLE_DEG)
     ob = bpy.data.objects.new('sun', L)
     h.col['Lights'].objects.link(ob)
     h.sun = ob
@@ -1106,6 +1268,12 @@ def set_variant(h: SceneHandles, variant: str) -> None:
     h.sun.data.color = color
     # ランプの −Z を太陽から来る向きへ（+Z が太陽方向）
     h.sun.rotation_euler = sun_vector(az, el).to_track_quat('Z', 'Y').to_euler()
+    # 周辺街区を素通しにする太陽方向の円錐（city_material）。太陽ランプのないバリアントでは無効（−2 未満の内積はない）
+    city = bpy.data.materials.get('city')
+    if city is not None:
+        nodes = city.node_tree.nodes
+        nodes['sun_dir'].inputs[1].default_value = sun_vector(az, el)
+        nodes['sun_cone'].inputs[1].default_value = -math.cos(math.radians(CITY_SUN_CONE_DEG)) if v['lamp'] else -2.0
     h.variant = variant
     log(f'バリアント {variant}: 方位 {az:.1f}° 高度 {el:.1f}°、太陽 {strength:.1f} klx {tuple(round(c, 3) for c in color)}'
         f'{"" if v["lamp"] else "（ランプなし）"}、天空 ×{v["sky"]}')
@@ -1116,26 +1284,82 @@ def set_variant(h: SceneHandles, variant: str) -> None:
 # ------------------------------------------------------------
 
 
-def set_visibility(h: SceneHandles, *, hide: tuple[str, ...] = (), camera_pos: Vector | None = None) -> None:
+def building_probe_points(h: SceneHandles) -> list[Vector]:
+    """建物（1F〜塔屋）の外接箱の角・辺の中点・中心（外観で遮る街区を探すための目標点）"""
+    b = h.meta['building']
+    P = b['plate']
+    y0, y1 = b['groundY'], b['heightFromGround'] + b['groundY']
+    pts = []
+    for fx in (0.0, 0.5, 1.0):
+        for fz in (0.0, 0.5, 1.0):
+            for fy in (0.0, 0.5, 1.0):
+                pts.append(three_to_bl((P['x0'] + (P['x1'] - P['x0']) * fx, y0 + (y1 - y0) * fy, P['z0'] + (P['z1'] - P['z0']) * fz)))
+    return pts
+
+
+def _segment_hits_box(a: Vector, b: Vector, lo: Vector, hi: Vector) -> bool:
+    """線分 a→b と軸平行箱の交差（スラブ法）"""
+    t0, t1 = 0.0, 1.0
+    for i in range(3):
+        d = b[i] - a[i]
+        if abs(d) < 1e-9:
+            if a[i] < lo[i] or a[i] > hi[i]:
+                return False
+            continue
+        u0, u1 = (lo[i] - a[i]) / d, (hi[i] - a[i]) / d
+        t0, t1 = max(t0, min(u0, u1)), min(t1, max(u0, u1))
+        if t0 > t1:
+            return False
+    return True
+
+
+def set_visibility(h: SceneHandles, *, hide: tuple[str, ...] = (), camera_pos: Vector | None = None,
+                   clear_view: bool = False, people_radius: float = 0.0, seated_radius: float = 0.0,
+                   tree_radius: float = 0.0) -> None:
     """
-    hide：'ceiling'（天井面・天井設備）, 'eaves', 'upper'（3F 以上）, 'roof', 'people', 'furniture', 'site', 'city'
+    hide：'ceiling'（天井面・天井設備）, 'eaves', 'upper'（3F 以上と屋上。代わりに 3F スラブの蓋を出す）,
+          'cap'（蓋も出さない）, 'people', 'furniture', 'site', 'city'
     camera_pos：この点を含む街区の箱は隠す（外観カメラが周辺街区の中に入る場合）
+    clear_view：カメラから建物を見通す線を遮る街区も隠す（外観用）
+    people_radius：カメラから水平にこの距離（m）以内の立っている・歩いている人物は隠す
+                   （レンズの目の前に立つ人を避ける）
+    seated_radius：座っている人物の同様の半径（静止画では 0 にして残す。パノラマは全周が写るので小さく隠す）
+    tree_radius：同じく街路樹・植栽（低ポリゴンの樹冠が画面の手前を覆うのを避ける）
     """
     names = {
-        'ceiling': ['F2_ceiling'], 'eaves': ['F2_eaves'], 'upper': ['Upper'], 'roof': ['Roof'],
+        'ceiling': ['F2_ceiling'], 'eaves': ['F2_eaves'], 'upper': ['Upper', 'Roof'],
         'people': ['F2_people'], 'furniture': ['F2_furniture'], 'site': ['Site'], 'city': ['City'],
     }
     for key, cols in names.items():
         for c in cols:
             h.col[c].hide_render = key in hide
+    h.col['Cap'].hide_render = 'upper' not in hide or 'cap' in hide
+    def hide_near(objs, radius: float, label: str) -> None:
+        n = 0
+        for ob in objs:
+            t = ob.matrix_world.translation
+            ob.hide_render = (camera_pos is not None and radius > 0 and abs(t.z - camera_pos.z) < 8.0
+                              and math.hypot(t.x - camera_pos.x, t.y - camera_pos.y) < radius)
+            n += ob.hide_render
+        if n:
+            log(f'カメラから {radius} m 以内の{label}の部品 {n} 個を非表示')
+
+    people = [o for o in h.col['F2_people'].objects if o.type == 'MESH']
+    seated = {o.name for o in people if o.parent and o.parent.name.startswith('person.sit')}
+    hide_near([o for o in people if o.name not in seated], people_radius, '人物')
+    hide_near([o for o in people if o.name in seated], seated_radius, '座っている人物')
+    hide_near([o for o in h.col['Site'].objects if o.type == 'MESH' and o.name.startswith('Mesh')
+               and o.parent and o.parent.name.startswith('tree:')], tree_radius, '樹木')
+    targets = building_probe_points(h) if clear_view else []
     for ob in h.city_blocks:
-        inside = False
+        hidden = False
         if camera_pos is not None:
             bb = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
             lo = Vector((min(v.x for v in bb), min(v.y for v in bb), min(v.z for v in bb)))
             hi = Vector((max(v.x for v in bb), max(v.y for v in bb), max(v.z for v in bb)))
-            inside = all(lo[i] - 2.0 <= camera_pos[i] <= hi[i] + 2.0 for i in range(3))
-        ob.hide_render = inside
+            hidden = all(lo[i] - 2.0 <= camera_pos[i] <= hi[i] + 2.0 for i in range(3))
+            hidden = hidden or any(_segment_hits_box(camera_pos, t, lo, hi) for t in targets)
+        ob.hide_render = hidden
 
 
 # ------------------------------------------------------------
@@ -1143,10 +1367,12 @@ def set_visibility(h: SceneHandles, *, hide: tuple[str, ...] = (), camera_pos: V
 # ------------------------------------------------------------
 
 
-def make_camera(name: str, pos3, tgt3, fov_deg: float, *, two_point: bool = False) -> bpy.types.Object:
+def make_camera(name: str, pos3, tgt3, fov_deg: float, *, two_point: bool = False,
+                extra_shift: float = 0.0) -> bpy.types.Object:
     """
     three.js のカメラ（pos/target、縦画角 fov）から Blender のカメラを作る。
     two_point=True：カメラを水平に据え、上下はレンズシフトで合わせる（建築写真の 2 点透視）。
+    extra_shift：構図を上下に動かすシフトの追加量（画像の高さ単位）。
     """
     sc = bpy.context.scene
     cam = bpy.data.cameras.get(name) or bpy.data.cameras.new(name)
@@ -1169,6 +1395,7 @@ def make_camera(name: str, pos3, tgt3, fov_deg: float, *, two_point: bool = Fals
         # シフト量（縦フィットでは画像の高さ単位）：tan(pitch) = 2·shift·tan(fov/2)
         cam.shift_y = math.tan(pitch) / (2 * math.tan(math.radians(fov_deg) / 2))
         d = horiz
+    cam.shift_y += extra_shift
     ob.location = p
     ob.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
     sc.camera = ob
@@ -1198,7 +1425,7 @@ def make_ortho_top(name: str, center3, width_m: float, height_z: float = 60.0) -
 def make_pano_camera(name: str, pos3, heading_deg: float) -> bpy.types.Object:
     """
     正距円筒パノラマ。画像中央 = 方位 heading_deg（北から時計回り）、右へ行くほど時計回り（内側から見た向き）、上端 = 天頂。
-    Cycles の正距円筒はカメラのローカル −Z… ではなく +X を中央に取るため、verify.py で確かめた回転を与える。
+    Cycles の正距円筒は通常のカメラと同じくローカル −Z が画像中央・+X が右・+Y が上（verify.py で確認）。
     """
     sc = bpy.context.scene
     cam = bpy.data.cameras.get(name) or bpy.data.cameras.new(name)
@@ -1218,14 +1445,8 @@ def make_pano_camera(name: str, pos3, heading_deg: float) -> bpy.types.Object:
 
 
 def pano_rotation(heading_deg: float):
-    """正距円筒カメラの回転（画像中央を heading、上を +Z に向ける）"""
-    # Cycles の正距円筒：カメラ空間の +X が画像中央、+Z が上端、+Y が画像の左 1/4
-    # → ワールドでは中央方向 f、上 +Z、左 = f を反時計回りに 90° 回した向き
-    f = sun_vector(heading_deg, 0.0)
-    up = Vector((0.0, 0.0, 1.0))
-    left = up.cross(f)
-    m = Matrix((f, left, up)).transposed()
-    return m.to_euler()
+    """正距円筒カメラの回転（画像中央を水平方向 heading へ、上を +Z へ）"""
+    return sun_vector(heading_deg, 0.0).to_track_quat('-Z', 'Y').to_euler()
 
 
 # ------------------------------------------------------------
@@ -1286,6 +1507,31 @@ def setup_cycles(samples: int, *, threshold: float = 0.02, denoise: bool = True,
     sc.render.use_motion_blur = False
 
 
+def setup_compositor(bloom: float, ev: float) -> None:
+    """
+    レンズの滲み（Glare の Bloom）を薄く足す。しきい値は露出後の表示基準で 1.0（シーン単位では 2^−EV）なので、
+    白飛びする照明器具・日の当たる窓だけがにじむ。bloom=0 でコンポジターを通さない。
+    """
+    sc = bpy.context.scene
+    sc.use_nodes = True
+    sc.render.use_compositing = bloom > 0
+    nt = sc.node_tree
+    nt.nodes.clear()
+    rl = nt.nodes.new('CompositorNodeRLayers')
+    comp = nt.nodes.new('CompositorNodeComposite')
+    src = rl.outputs['Image']
+    if bloom > 0:
+        g = nt.nodes.new('CompositorNodeGlare')
+        g.glare_type = 'BLOOM'
+        g.quality = 'HIGH'
+        g.inputs['Threshold'].default_value = 2.0 ** (-ev)
+        g.inputs['Strength'].default_value = bloom
+        g.inputs['Size'].default_value = 0.5
+        nt.links.new(src, g.inputs['Image'])
+        src = g.outputs['Image']
+    nt.links.new(src, comp.inputs['Image'])
+
+
 def set_resolution(w: int, h: int) -> None:
     r = bpy.context.scene.render
     r.resolution_x = w
@@ -1309,12 +1555,13 @@ def render_to(path: Path, fmt: str = 'PNG') -> float:
         s.compression = 15
     sc.render.filepath = str(path)
     t = time.time()
-    bpy.ops.render.render(write_still=True)
+    with blender_log():
+        bpy.ops.render.render(write_still=True)
     return time.time() - t
 
 
-def load_exr(path: Path):
-    """EXR を numpy (h, w, 4) float32 で読む（行 0 = 画像の下端、Blender 流）"""
+def load_float_image(path: Path):
+    """EXR / HDR を numpy (h, w, 4) float32 で読む（行 0 = 画像の下端、Blender 流）"""
     import numpy as np
 
     im = bpy.data.images.load(str(path), check_existing=False)
@@ -1323,6 +1570,88 @@ def load_exr(path: Path):
     im.pixels.foreach_get(a)
     bpy.data.images.remove(im)
     return a.reshape(hh, w, 4)
+
+
+def bake_diffuse(targets: list[bpy.types.Object], image: bpy.types.Image, samples: int, margin: int) -> float:
+    """
+    targets の全マテリアルに image を持つ画像ノードを足してアクティブにし、Diffuse（Direct＋Indirect、色なし）をベイクする。
+    UV は各メッシュのアクティブ UV（描画用 UV とは別に選べる）。画像はクリアしない（呼び出し側で初期化）。所要秒を返す。
+    """
+    sc = bpy.context.scene
+    sc.render.engine = 'CYCLES'
+    sc.cycles.samples = samples
+    added = []
+    seen: set[str] = set()
+    for ob in targets:
+        for slot in ob.material_slots:
+            m = slot.material
+            if m is None or m.name in seen:
+                continue
+            seen.add(m.name)
+            node = m.node_tree.nodes.new('ShaderNodeTexImage')
+            node.image = image
+            node.interpolation = 'Closest'
+            m.node_tree.nodes.active = node
+            node.select = True
+            added.append((m.name, node))
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    for ob in targets:
+        ob.select_set(True)
+    bpy.context.view_layer.objects.active = targets[0]
+    t = time.time()
+    with blender_log():
+        bpy.ops.object.bake(type='DIFFUSE', pass_filter={'DIRECT', 'INDIRECT'}, margin=margin, margin_type='EXTEND',
+                            use_clear=False, target='IMAGE_TEXTURES', use_selected_to_active=False)
+    dt = time.time() - t
+    for name, node in added:
+        bpy.data.materials[name].node_tree.nodes.remove(node)
+    for ob in targets:
+        ob.select_set(False)
+    return dt
+
+
+def new_float_image(name: str, w: int, h: int, fill: float):
+    """線形 float 画像を fill で初期化して作る（未ベイク画素の判定に使う）。データ扱い（Non-Color）で色変換させない"""
+    import numpy as np
+
+    im = bpy.data.images.new(name, w, h, alpha=True, float_buffer=True)
+    im.colorspace_settings.name = 'Non-Color'
+    a = np.full(w * h * 4, fill, dtype=np.float32)
+    a[3::4] = 1.0
+    im.pixels.foreach_set(a)
+    return im
+
+
+def image_array(im: bpy.types.Image):
+    """画像の画素を numpy (h, w, 4) で（行 0 = 画像の下端）"""
+    import numpy as np
+
+    w, hh = im.size
+    a = np.empty(w * hh * 4, dtype=np.float32)
+    im.pixels.foreach_get(a)
+    return a.reshape(hh, w, 4)
+
+
+def save_float_image(arr, path: Path, fmt: str = 'OPEN_EXR') -> None:
+    """
+    numpy (h, w, 3|4)（行 0 = 下端）を線形のまま保存（fmt: 'OPEN_EXR' 32bit / 'HDR' Radiance）。
+    Linear Rec.709 のまま Image.save() すると sRGB の伝達関数が掛かるので、Non-Color（データ）として書く。
+    """
+    import numpy as np
+
+    hh, w = arr.shape[:2]
+    im = bpy.data.images.new('tmp_save', w, hh, alpha=True, float_buffer=True)
+    im.colorspace_settings.name = 'Non-Color'
+    rgba = np.ones((hh, w, 4), dtype=np.float32)
+    rgba[..., :3] = arr[..., :3]
+    im.pixels.foreach_set(rgba.ravel())
+    im.filepath_raw = str(path)
+    im.file_format = fmt
+    if fmt == 'OPEN_EXR':
+        im.use_half_precision = False
+    im.save()
+    bpy.data.images.remove(im)
 
 
 def write_json(path: Path, data) -> None:

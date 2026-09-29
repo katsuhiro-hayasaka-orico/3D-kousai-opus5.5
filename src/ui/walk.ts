@@ -14,6 +14,12 @@ export class WalkControls {
   private keys = new Set<string>();
   private drag: { x: number; y: number } | null = null;
   private moveIntent = new THREE.Vector2();
+  // 毎フレームの計算用（割り当てを避ける）
+  private tmpP = new THREE.Vector2();
+  private tmpAB = new THREE.Vector2();
+  private tmpAP = new THREE.Vector2();
+  private tmpDir = new THREE.Vector3();
+  private tmpTarget = new THREE.Vector3();
   radius = 0.28;
 
   constructor(
@@ -78,8 +84,8 @@ export class WalkControls {
     for (const o of this.obstacles) {
       if (p.x > o[0] - r && p.x < o[2] + r && p.y > o[1] - r && p.y < o[3] + r) return true;
     }
-    const ab = new THREE.Vector2();
-    const ap = new THREE.Vector2();
+    const ab = this.tmpAB;
+    const ap = this.tmpAP;
     for (const c of this.colliders) {
       ab.subVectors(c.b, c.a);
       ap.subVectors(p, c.a);
@@ -107,9 +113,9 @@ export class WalkControls {
       const fz = -Math.cos(this.yaw);
       const dx = (fx * f + -fz * s) * speed;
       const dz = (fz * f + fx * s) * speed;
-      const nx = new THREE.Vector2(this.pos.x + dx, this.pos.y);
+      const nx = this.tmpP.set(this.pos.x + dx, this.pos.y);
       if (!this.blocked(nx)) this.pos.x = nx.x;
-      const nz = new THREE.Vector2(this.pos.x, this.pos.y + dz);
+      const nz = this.tmpP.set(this.pos.x, this.pos.y + dz);
       if (!this.blocked(nz)) this.pos.y = nz.y;
     }
     this.apply();
@@ -117,7 +123,7 @@ export class WalkControls {
 
   apply(): void {
     this.camera.position.set(this.pos.x, this.eye, this.pos.y);
-    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
-    this.camera.lookAt(this.camera.position.clone().add(dir));
+    const dir = this.tmpDir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
+    this.camera.lookAt(this.tmpTarget.copy(this.camera.position).add(dir));
   }
 }

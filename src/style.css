@@ -118,6 +118,33 @@ body {
   color: var(--sub);
   margin-top: 2px;
 }
+.tb-right {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+#photoBtn {
+  border: 0;
+  background: linear-gradient(135deg, #1d3557, #35507a);
+  color: #fff;
+  box-shadow: var(--shadow);
+  border-radius: 10px;
+  padding: 0 14px;
+  height: 41px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#photoBtn small {
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+#photoBtn[hidden] {
+  display: none;
+}
 #modes {
   display: flex;
   background: var(--panel);
@@ -281,6 +308,52 @@ body {
   border-radius: 3px;
   margin-right: 6px;
   vertical-align: -1px;
+}
+/* 画質 */
+.seg {
+  display: flex;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.seg button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  padding: 5px 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.girow label {
+  font-size: 12px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+.girow input:disabled {
+  opacity: 0.4;
+}
+.gfx-note {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sub);
+}
+.gfx-note:empty {
+  display: none;
+}
+.tg:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
 }
 .btns {
   display: flex;
@@ -712,6 +785,298 @@ body {
   color: #8a5a00;
 }
 
+/* ---------- フォトリアル ギャラリー ---------- */
+#gallery {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  background: rgba(8, 12, 18, 0.72);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+#gallery[hidden],
+#gallery .gal-view[hidden],
+.gal-actions button[hidden],
+.gal-note[hidden] {
+  display: none;
+}
+.gal-card {
+  position: relative;
+  width: min(1180px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px 18px;
+}
+.gal-card header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.gal-card header h2 span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sub);
+  margin-left: 6px;
+}
+.gal-card header p {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  color: var(--sub);
+}
+.gal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.gal-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 0 0 8px;
+  overflow: hidden;
+  cursor: pointer;
+  font: inherit;
+}
+.gal-item:hover {
+  border-color: var(--accent);
+}
+.gal-item img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: #222;
+  margin-bottom: 4px;
+}
+.gal-item b,
+.gal-item small {
+  padding: 0 10px;
+}
+.gal-item b {
+  font-size: 12.5px;
+}
+.gal-item small {
+  font-size: 10.5px;
+  color: var(--sub);
+}
+.gal-kind {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(10, 15, 22, 0.78);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.gal-view {
+  position: absolute;
+  inset: 0;
+  background: #0b0e12;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+.gal-view img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+.gal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 10px 18px 14px;
+  background: rgba(20, 25, 32, 0.96);
+  color: #e8edf2;
+}
+.gal-meta h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.gal-meta p {
+  margin: 0;
+  font-size: 12px;
+  color: #aeb8c2;
+}
+.gal-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.gal-actions button {
+  border: 1px solid #3a4652;
+  background: #222a33;
+  color: #e8edf2;
+  font: inherit;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.gal-actions button[data-act='preset'],
+.gal-actions button[data-act='pano'] {
+  background: #5b9bea;
+  border-color: #5b9bea;
+  color: #0d1520;
+}
+.gal-view .close {
+  color: #fff;
+  font-size: 26px;
+  top: 10px;
+  right: 14px;
+}
+.gal-nav {
+  position: absolute;
+  top: calc(50% - 40px);
+  width: 44px;
+  height: 64px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(20, 25, 32, 0.55);
+  color: #fff;
+  font-size: 34px;
+  cursor: pointer;
+}
+.gal-prev {
+  left: 12px;
+}
+.gal-next {
+  right: 12px;
+}
+
+/* ---------- 360° ビューア ---------- */
+#pano {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+#pano:active {
+  cursor: grabbing;
+}
+#pano[hidden] {
+  display: none;
+}
+body.pano-open #topbar,
+body.pano-open #panel,
+body.pano-open #panelToggle,
+body.pano-open #info,
+body.pano-open #mapbox,
+body.pano-open #compass,
+body.pano-open #hintbar,
+body.pano-open #walkui,
+body.pano-open .label-layer {
+  display: none;
+}
+.pano-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  pointer-events: none;
+}
+.pano-top > * {
+  pointer-events: auto;
+}
+.pano-title {
+  background: rgba(12, 16, 22, 0.72);
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.pano-title b {
+  display: block;
+  font-size: 14px;
+}
+.pano-title span {
+  font-size: 11px;
+  color: #b8c3ce;
+}
+.pano-close {
+  border: 0;
+  background: #fff;
+  color: #1d232a;
+  font: inherit;
+  font-weight: 700;
+  padding: 9px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.pano-msg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  background: rgba(12, 16, 22, 0.72);
+  padding: 8px 14px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+.pano-msg[hidden] {
+  display: none;
+}
+.pano-bottom {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.pano-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+.pano-list button {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(12, 16, 22, 0.66);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.pano-list button.on {
+  background: #fff;
+  color: #1d232a;
+}
+.pano-hint {
+  font-size: 11.5px;
+  color: #fff;
+  background: rgba(12, 16, 22, 0.55);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
 /* ---------- 狭い画面 ---------- */
 @media (max-width: 760px) {
   body {
@@ -734,9 +1099,36 @@ body {
   .title .t2 {
     font-size: 10.5px;
   }
-  #modes {
+  #topbar:has(#photoBtn:not([hidden])) .title {
+    margin-right: 96px;
+  }
+  .tb-right {
     align-self: stretch;
+  }
+  #photoBtn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  #photoBtn small {
+    display: none;
+  }
+  #modes {
+    flex: 1;
     justify-content: space-between;
+  }
+  .gal-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .gal-actions {
+    margin-left: 0;
+  }
+  .pano-hint {
+    display: none;
   }
   #modes button {
     padding: 6px 8px;

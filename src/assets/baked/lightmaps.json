@@ -1,0 +1,109 @@
+{
+  "hash": "92a998cb",
+  "atlases": {
+    "floor": {
+      "file": "lm_floor.webp",
+      "w": 4096,
+      "h": 2048,
+      "scale": 1.25521
+    },
+    "ceil": {
+      "file": "lm_ceil.webp",
+      "w": 4096,
+      "h": 2048,
+      "scale": 0.35371
+    },
+    "wall": {
+      "file": "lm_wall.webp",
+      "w": 4096,
+      "h": 4096,
+      "scale": 0.65197
+    }
+  },
+  "encoding": "srgb8",
+  "units": "画素 p（sRGB をデコードした線形 0〜1）× scale = Cycles の Diffuse ライトパス値（白の拡散面の輝度）。照度 E = π × 値。値 1.0 ≒ 1,000 cd/m²（照度 π×1,000 lx）",
+  "bake": {
+    "atlases": {
+      "floor": {
+        "samples": 16,
+        "seconds": 74.9,
+        "resolutionScale": 0.5,
+        "quality": "preview",
+        "stats": {
+          "validFraction": 0.8652,
+          "median": [
+            0.1235,
+            0.1186,
+            0.1055
+          ],
+          "meanLum": 0.1556,
+          "p99_5": 1.2552,
+          "max": 1.8559,
+          "clippedFraction": 0.005,
+          "bytes": 187504
+        }
+      },
+      "ceil": {
+        "samples": 16,
+        "seconds": 90.7,
+        "resolutionScale": 0.5,
+        "quality": "preview",
+        "stats": {
+          "validFraction": 0.901,
+          "median": [
+            0.0615,
+            0.0608,
+            0.05
+          ],
+          "meanLum": 0.0624,
+          "p99_5": 0.3537,
+          "max": 1.2299,
+          "clippedFraction": 0.005,
+          "bytes": 282444
+        }
+      },
+      "wall": {
+        "samples": 16,
+        "seconds": 161.5,
+        "resolutionScale": 0.5,
+        "quality": "preview",
+        "stats": {
+          "validFraction": 0.9201,
+          "median": [
+            0.0348,
+            0.0329,
+            0.0281
+          ],
+          "meanLum": 0.067,
+          "p99_5": 0.652,
+          "max": 5.7545,
+          "clippedFraction": 0.005,
+          "bytes": 443910
+        }
+      }
+    },
+    "blender": "4.5.14",
+    "samples": 16,
+    "seconds": 327.1,
+    "denoise": "OIDN",
+    "world": "Nishita 天空（10:30 の分布、太陽ディスクなし）＋室内照明。太陽ランプなし。周辺街区（概略の箱）は天空光を遮る",
+    "ledRadiance": 14.0
+  },
+  "quality": "preview",
+  "env": {
+    "file": "env_interior.hdr",
+    "w": 1024,
+    "h": 512,
+    "pos": [
+      25.0,
+      1.55,
+      14.5
+    ],
+    "variant": "day",
+    "sunHours": 10.5,
+    "samples": 64,
+    "seconds": 112.7,
+    "mapping": "three.js equirectUv（u=0.5 が +X 東、u=0.75 が +Z 南、上端が天頂）",
+    "mean": 0.3097
+  }
+}
