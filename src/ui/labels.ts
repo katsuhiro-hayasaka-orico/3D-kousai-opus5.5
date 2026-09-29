@@ -10,6 +10,8 @@ interface Item {
   kind: Kind;
   rect?: [number, number, number, number];
   minPx: number;
+  /** 追加の表示条件（例：対象の街区が隠れていない） */
+  when?: () => boolean;
   /** 実測したラベルの幅・高さ（px） */
   w?: number;
   h?: number;
@@ -68,8 +70,8 @@ export class Labels {
     for (const c of centers) this.add('ac', `AC-${String(c.id).padStart(2, '0')}<span>${c.units}台</span>`, 'lbl-ac', c.x, 0.1, c.z);
   }
 
-  poi(html: string, x: number, y: number, z: number): void {
-    this.add('poi', html, 'lbl-poi', x, y, z);
+  poi(html: string, x: number, y: number, z: number, when?: () => boolean): void {
+    this.add('poi', html, 'lbl-poi', x, y, z).when = when;
   }
 
   setEnabled(kind: Kind, on: boolean): void {
@@ -99,6 +101,7 @@ export class Labels {
     const ppm = this.pxPerMeter(camera, w, h);
     for (const it of this.items) {
       let show = this.enabled[it.kind];
+      if (show && it.when) show = it.when();
       if (show && it.kind === 'axis') show = ppm * 6.4 >= 36;
       if (show && it.kind === 'ac') show = ppm * 9.6 >= 60;
       if (show && it.rect) {

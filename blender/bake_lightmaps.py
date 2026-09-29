@@ -32,10 +32,11 @@ from mathutils import Vector  # noqa: E402
 
 ATLAS_NAMES = ('floor', 'ceil', 'wall')
 
-#: 品質プリセット：サンプル数、アトラスごとの解像度倍率（契約サイズに対する。天井は変化がなめらかなので半分で焼いて拡大）
+#: 品質プリセット：サンプル数、アトラスごとの解像度倍率（契約サイズに対する）。
+#: 最終品質は「時間を厭わない」方針で全アトラスを契約サイズのまま 128 サンプルで焼く
 QUALITY = {
     'preview': {'samples': 16, 'scale': {'floor': 0.5, 'ceil': 0.5, 'wall': 0.5}, 'env_samples': 64},
-    'final': {'samples': 96, 'scale': {'floor': 1.0, 'ceil': 0.5, 'wall': 1.0}, 'env_samples': 256},
+    'final': {'samples': 128, 'scale': {'floor': 1.0, 'ceil': 1.0, 'wall': 1.0}, 'env_samples': 256},
 }
 
 

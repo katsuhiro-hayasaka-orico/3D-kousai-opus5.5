@@ -9,9 +9,10 @@ import { buildAcOverlay, buildEvacOverlay, buildPlanLines, buildWifiOverlay, bui
 import { defineProtos } from './build/protos';
 import {
   buildColumns,
+  CITY_BLOCKS,
+  buildCityBlock,
   buildCurtainWall,
   buildFloors,
-  buildGhost,
   buildLedgeAndBalconies,
   buildSite,
   buildStairs,
@@ -20,6 +21,7 @@ import {
   treeProto,
 } from './build/shell';
 import { Walkers } from './build/walkers';
+import { buildRoof, buildUpperFloors } from './build/upper';
 import { DoorInfo, buildWalls, wallColliders } from './build/walls';
 import { roomPlateTexture } from './core/textures';
 import { lmHash, packWallCharts } from './core/lightmap';
@@ -34,6 +36,7 @@ export type LayerKey =
   | 'eaves'
   | 'site'
   | 'upper'
+  | 'floors'
   | 'zones'
   | 'ac'
   | 'wifi'
@@ -65,8 +68,13 @@ export interface World {
   acCenters: { id: number; x: number; z: number; units: number }[];
   axes: { name: string; x: number; z: number }[];
   pickables: THREE.Object3D[];
-  /** ライトマップ対象メッシュとレイアウトハッシュ */
-  lightmap: { meshes: THREE.Mesh[]; hash: string; wallDensity: number; wallFill: number };
+  /**
+   * ライトマップ対象メッシュとレイアウトハッシュ。followers は同じジオメトリを共有する外観用上階の
+   * InstancedMesh（userData.lmSource が元メッシュ）で、ハッシュには含めない
+   */
+  lightmap: { meshes: THREE.Mesh[]; followers: THREE.Mesh[]; hash: string; wallDensity: number; wallFill: number };
+  /** 周辺街区の箱（外観で建物を遮るものを隠す：gfx/clearance.ts） */
+  cityBlocks: THREE.Mesh[];
 }
 
 /** 会議室等の扉脇に室名サイン（H1550） */
@@ -107,7 +115,7 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
     scene.add(g);
     return g;
   };
-  (['structure', 'furniture', 'people', 'ceiling', 'eaves', 'site', 'upper', 'zones', 'ac', 'wifi', 'evac', 'plan'] as LayerKey[]).forEach(mk);
+  (['structure', 'furniture', 'people', 'ceiling', 'eaves', 'site', 'upper', 'floors', 'zones', 'ac', 'wifi', 'evac', 'plan'] as LayerKey[]).forEach(mk);
 
   // ---- 躯体 ----
   progress('躯体・床・柱を生成中…');
@@ -148,9 +156,15 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
   layers.site.add(buildStatic(site, 'site', { cast: false }));
   const tr = new Rng(99);
   for (const t of trees) I.add('tree', t.x, -5.6, t.z, tr.range(0, 6), { scale: t.s, tints: { leaf: new THREE.Color().setHSL(0.26 + tr.range(-0.03, 0.03), 0.42, 0.3 + tr.range(-0.05, 0.05)) } });
-  const ghost = new PB();
-  buildGhost(ghost);
-  layers.upper.add(buildStatic(ghost, 'ghost', { cast: false, receive: false }));
+  const cityBlocks: THREE.Mesh[] = [];
+  CITY_BLOCKS.forEach((_, i) => {
+    const pb = new PB();
+    buildCityBlock(pb, i);
+    const g = buildStatic(pb, 'ghost', { cast: false, receive: false });
+    g.name = `city.${i}`;
+    g.traverse((o) => (o as THREE.Mesh).isMesh && cityBlocks.push(o as THREE.Mesh));
+    layers.upper.add(g);
+  });
 
   // ---- インスタンス生成 ----
   progress('インスタンスを構築中…');
@@ -159,6 +173,12 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
   layers.site.add(I.build('trees', (n) => n === 'tree'));
   layers.furniture.add(I.build('furniture', (n) => !n.startsWith('person.') && !n.startsWith('ceil.') && n !== 'tree'));
   layers.ceiling.traverse((o) => ((o as THREE.Mesh).castShadow = false));
+
+  // ---- 外観用の上階（3F〜12F）と屋上 ----
+  layers.floors.add(buildUpperFloors([layers.structure, layers.eaves, layers.ceiling]));
+  const roof = new PB();
+  buildRoof(roof);
+  layers.floors.add(buildStatic(roof, 'roof'));
 
   const walkers = new Walkers();
   layers.people.add(walkers.group);
@@ -223,7 +243,11 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
     layers[k].traverse((o) => {
       if ((o as THREE.Mesh).isMesh && o.userData.lmAtlas) lmMeshes.push(o as THREE.Mesh);
     });
-  const lightmap = { meshes: lmMeshes, hash: lmHash(lmMeshes), wallDensity: lmPack.density, wallFill: lmPack.fill };
+  const followers: THREE.Mesh[] = [];
+  layers.floors.traverse((o) => {
+    if (o.userData.lmSource) followers.push(o as THREE.Mesh);
+  });
+  const lightmap = { meshes: lmMeshes, followers, hash: lmHash(lmMeshes), wallDensity: lmPack.density, wallFill: lmPack.fill };
 
-  return { layers, walkers, obstacles, colliders, stats, acCenters: acO.centers, axes: planL.axes, pickables, lightmap };
+  return { layers, walkers, obstacles, colliders, stats, acCenters: acO.centers, axes: planL.axes, pickables, lightmap, cityBlocks };
 }

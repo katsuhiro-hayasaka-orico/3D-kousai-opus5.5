@@ -199,8 +199,9 @@ export function buildMaterials(): void {
   ghost.userData.isGlass = true;
   const ghostLine = std('ghost.glass', { color: 0x7fa3ad, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.26, depthWrite: false });
   ghostLine.userData.isGlass = true;
-  const ghostCity = std('ghost.city', { color: 0xe9e6e0, roughness: 0.9, transparent: true, opacity: 0.35, depthWrite: false });
-  ghostCity.userData.isGlass = true;
+  // 周辺街区の外装（不透明）。点灯窓の明るさは時刻で変える（main.ts の setSun）。名前は書き出しの契約（Blender が差し替える）
+  const city = T.cityFacadeTextures();
+  std('ghost.city', { map: city.map, emissive: 0xffffff, emissiveMap: city.emissive, emissiveIntensity: 0.3, roughnessMap: city.rough, roughness: 1, metalness: 0 });
   std('ground', { color: 0x8f9588, roughness: 1 });
   std('asphalt', { map: T.asphaltTexture(), roughness: 0.95 });
   std('paving', { map: T.pavingTexture(), roughness: 0.9 });

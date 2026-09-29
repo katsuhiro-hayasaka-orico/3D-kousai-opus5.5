@@ -36,7 +36,7 @@ for (const s of steps) {
   if (s.wait) await page.waitForTimeout(s.wait);
   if (s.shot) {
     const jpg = s.shot.endsWith('.jpg');
-    await page.screenshot({ path: `${out}/${jpg ? s.shot : s.shot + '.png'}`, ...(jpg ? { type: 'jpeg', quality: 82 } : {}) });
+    await page.screenshot({ path: `${out}/${jpg ? s.shot : s.shot + '.png'}`, timeout: 300000, ...(jpg ? { type: 'jpeg', quality: 82 } : {}) });
     console.log('shot', s.shot);
   }
 }

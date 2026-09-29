@@ -275,12 +275,13 @@ def organize_collections(h: SceneHandles) -> None:
     h.col['City'] = city
     for o in list(ghost.objects):
         if o.type == 'MESH' and o.data.materials and o.data.materials[0].name == 'ghost.city':
-            h.city_blocks = split_city_blocks(o, city)
+            # ブラウザ版は箱ごとに別メッシュ（旧版は 1 メッシュ）。どちらでも連結成分ごとに分ける
+            h.city_blocks += split_city_blocks(o, city, start=len(h.city_blocks))
     for name in ('Upper', 'Roof', 'Cap', 'Lights'):
         h.col[name] = _new_collection(name, master)
 
 
-def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection) -> list[bpy.types.Object]:
+def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection, start: int = 0) -> list[bpy.types.Object]:
     """周辺街区（1 メッシュに複数の箱）を連結成分ごとの独立オブジェクトにする（ショットごとに隠せるように）"""
     bm = bmesh.new()
     bm.from_mesh(src.data)
@@ -316,11 +317,11 @@ def split_city_blocks(src: bpy.types.Object, col: bpy.types.Collection) -> list[
                     vmap[v.index] = nb.verts.new(v.co)
                 vs.append(vmap[v.index])
             nb.faces.new(vs)
-        me = bpy.data.meshes.new(f'city.{i}')
+        me = bpy.data.meshes.new(f'city.{start + i}')
         nb.to_mesh(me)
         nb.free()
         me.materials.append(mat)
-        ob = bpy.data.objects.new(f'city.{i}', me)
+        ob = bpy.data.objects.new(f'city.{start + i}', me)
         # 影の光線の可視性（visible_shadow）は切らない。直射日光の影だけを落とさない仕組みは city_material にある
         col.objects.link(ob)
         out.append(ob)

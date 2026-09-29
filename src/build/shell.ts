@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PB, floorRectGeo } from '../core/geom';
 import { Rng } from '../core/rng';
+import { CITY_TILE } from '../core/textures';
 import { ALL_ROOMS, BALCONIES, Balcony, Side } from '../data/rooms';
 import { COLUMN, CORE, CW, GROUND_Y, H, PLATE } from '../data/spec';
 
@@ -350,38 +351,66 @@ export function treeProto(pb: PB): void {
   pb.cyl('facade.stone', 0.6, 0.6, 0.12, 0, 0.06, 0, 16);
 }
 
-/** 建物全体のゴースト（他階）と周辺建物（概略） */
-export function buildGhost(pb: PB): void {
-  const f2f = H.floorToFloor;
-  const e = CW.eave;
-  // 1 階
-  // 3〜11 階（基準階）
-  for (let f = 3; f <= 11; f++) {
-    const y = (f - 2) * f2f;
-    pb.boxX('ghost', PLATE.x0 - e, y - 0.42, PLATE.z0 - e, PLATE.x1 + e, y - 0.12, PLATE.z1 + e);
-    pb.boxX('ghost.glass', PLATE.x0, y - 0.12, PLATE.z0, PLATE.x1, y + f2f - 0.42, PLATE.z1);
-    for (const b of BALCONIES) {
-      const [x0, z0, x1, z1] = balconyRect(b, CW.balcony);
-      pb.boxX('ghost', x0, y - 0.42, z0, x1, y - 0.12, z1);
+/** 周辺街区（概略）。上階は build/upper.ts で 2F を積み上げて表現する */
+/** 周辺街区の箱 [x0, z0, x1, z1, 地上高さ]。位置・形状は概略 */
+export const CITY_BLOCKS: readonly (readonly [number, number, number, number, number])[] = [
+  [-26, 64, 30, 100, 88], // 向かい：麹町ミレニアムガーデン（オリコ本社）
+  [-120, -70, -52, 18, 32],
+  [52, -70, 120, 18, 38],
+  [-40, -110, 40, -34, 24],
+  [-120, 64, -34, 110, 45],
+  [38, 64, 120, 110, 36],
+];
+
+/** 周辺街区の i 番目の箱（外観で建物を遮る箱を個別に隠せるよう、箱ごとに別メッシュにする） */
+export function buildCityBlock(pb: PB, i: number): void {
+  const [x0, z0, x1, z1, h] = CITY_BLOCKS[i];
+  cityBlock(pb, x0, z0, x1, z1, h, i);
+}
+
+/**
+ * 周辺街区の箱（側面 4 枚＋屋上面）。UV は世界座標の m をタイル寸法（CITY_TILE）で割ったもので、
+ * 階とスパンの格子が箱の大きさによらず一定になる。箱ごとにスパン・階をずらして同じ柄の並びを避ける。
+ * 屋上面はスパンドレル（無地）の 1 点を参照する。
+ */
+function cityBlock(pb: PB, x0: number, z0: number, x1: number, z1: number, height: number, seed: number): void {
+  const tu = CITY_TILE.bays * CITY_TILE.bayW;
+  const tv = CITY_TILE.floors * CITY_TILE.floorH;
+  const du = (seed * 5) / CITY_TILE.bays;
+  const dv = (seed * 3) / CITY_TILE.floors;
+  const y0 = GROUND_Y;
+  const y1 = GROUND_Y + height;
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const uv: number[] = [];
+  // 外から見て反時計回りの四角形 a,b,c,d（a→b が水平、b→c が上）
+  const quad = (a: number[], b: number[], c: number[], d: number[], n: number[], uvs: number[][]) => {
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+      pos.push(...[a, b, c, d][i]);
+      nrm.push(...n);
+      uv.push(...uvs[i]);
     }
-  }
-  // 12 階（セットバック：北側ウイング上部は専用テラス）
-  const y12 = 10 * f2f;
-  pb.boxX('ghost', PLATE.x0 - e, y12 - 0.42, PLATE.z0 - e, PLATE.x1 + e, y12 - 0.12, PLATE.z1 + e);
-  pb.boxX('ghost.glass', PLATE.x0, y12 - 0.12, -1.6, PLATE.x1, y12 + f2f - 0.42, PLATE.z1);
-  pb.boxX('ghost.glass', CORE.x0, y12 - 0.12, CORE.z0, CORE.x1, y12 + f2f - 0.42, -1.6);
-  // 屋上・塔屋（最高高さ 62.166m：公開）
-  const roof = 11 * f2f;
-  pb.boxX('ghost', PLATE.x0 - e, roof - 0.42, PLATE.z0 - e, PLATE.x1 + e, roof, PLATE.z1 + e);
-  const top = 62.166 + GROUND_Y;
-  pb.boxX('ghost', CORE.x0 + 2, roof, CORE.z0 + 1, CORE.x1 - 2, top, CORE.z1 - 3);
-  // 向かい：麹町ミレニアムガーデン（オリコ本社）— 位置・形状は概略
-  pb.boxX('ghost.city', -26, GROUND_Y, 64, 30, GROUND_Y + 88, 100);
-  // 周辺街区（概略）
-  pb.boxX('ghost.city', -120, GROUND_Y, -70, -52, GROUND_Y + 32, 18);
-  pb.boxX('ghost.city', 52, GROUND_Y, -70, 120, GROUND_Y + 38, 18);
-  pb.boxX('ghost.city', -40, GROUND_Y, -110, 40, GROUND_Y + 24, -34);
-  pb.boxX('ghost.city', -120, GROUND_Y, 64, -34, GROUND_Y + 45, 110);
-  pb.boxX('ghost.city', 38, GROUND_Y, 64, 120, GROUND_Y + 36, 110);
+  };
+  const side = (a: number[], b: number[], n: number[], ua: number, ub: number) => {
+    const v0 = dv;
+    const v1 = dv + height / tv;
+    quad([a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]], n, [
+      [du + ua / tu, v0],
+      [du + ub / tu, v0],
+      [du + ub / tu, v1],
+      [du + ua / tu, v1],
+    ]);
+  };
+  side([x0, z1], [x1, z1], [0, 0, 1], x0, x1); // 南
+  side([x1, z0], [x0, z0], [0, 0, -1], -x1, -x0); // 北
+  side([x1, z1], [x1, z0], [1, 0, 0], -z1, -z0); // 東
+  side([x0, z0], [x0, z1], [-1, 0, 0], z0, z1); // 西
+  const flat = [0.5 / CITY_TILE.bays, (0.16 * CITY_TILE.floorH) / tv];
+  quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], [flat, flat, flat, flat]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  pb.add(g, 'ghost.city', new THREE.Matrix4(), true);
 }
 

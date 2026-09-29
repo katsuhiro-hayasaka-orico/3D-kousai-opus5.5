@@ -746,6 +746,12 @@ export function defineProtos(I: Instancer): void {
     pb.box('light.panel', 1.2, 0.02, 0.08, 0, -0.012, 0);
     pb.box('frame.white', 1.22, 0.01, 0.1, 0, -0.004, 0);
   });
+  I.define('wall.bracket', (pb) => {
+    // 壁付けブラケット照明（上下配光）。原点は壁面、本体は +z 側
+    pb.box('frame.white', 0.44, 0.12, 0.09, 0, 0, 0.045);
+    pb.box('light.warm', 0.4, 0.004, 0.07, 0, 0.062, 0.045);
+    pb.box('light.warm', 0.4, 0.004, 0.07, 0, -0.062, 0.045);
+  });
   I.define('ceil.down', (pb) => {
     pb.cyl('frame.white', 0.09, 0.09, 0.01, 0, -0.005, 0, 16);
     pb.cyl('light.panel', 0.065, 0.065, 0.004, 0, -0.012, 0, 16);

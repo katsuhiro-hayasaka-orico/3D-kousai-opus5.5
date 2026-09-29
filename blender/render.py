@@ -97,7 +97,7 @@ SHOTS = [
 #: final は CPU 4 コアで全ショット ≒ 8 時間（実測に基づく見積もりは README §8）
 QUALITY = {
     'preview': {'scale': 1 / 3, 'pano_scale': 0.25, 'samples': 32, 'pano_samples': 16, 'threshold': 0.05},
-    'final': {'scale': 1.0, 'pano_scale': 1.0, 'samples': 96, 'pano_samples': 24, 'threshold': 0.02},
+    'final': {'scale': 1.0, 'pano_scale': 1.0, 'samples': 160, 'pano_samples': 48, 'threshold': 0.02},
 }
 STILL_SIZE = (1920, 1080)
 PANO_SIZE = (4096, 2048)

@@ -308,11 +308,12 @@ export class Lightmaps {
     this.build();
   }
 
-  /** 対象メッシュごとにライトマップ付きマテリアルを用意（アトラス × 元マテリアルで共有） */
+  /** 対象メッシュごとにライトマップ付きマテリアルを用意（アトラス × 元マテリアルで共有）。上階の複製にも同じものを当てる */
   private build(): void {
     const cache = new Map<string, THREE.MeshStandardMaterial>();
-    for (const mesh of this.world.lightmap.meshes) {
-      const atlas = mesh.userData.lmAtlas as LmAtlas;
+    for (const mesh of [...this.world.lightmap.meshes, ...this.world.lightmap.followers]) {
+      const src = (mesh.userData.lmSource as THREE.Mesh | undefined) ?? mesh;
+      const atlas = src.userData.lmAtlas as LmAtlas;
       const tex = this.tex[atlas];
       const knee = this.knee[atlas];
       const base = mesh.material as THREE.MeshStandardMaterial;

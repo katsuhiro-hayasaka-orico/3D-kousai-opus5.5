@@ -795,3 +795,86 @@ export function pavingTexture(): THREE.CanvasTexture {
     { repeat: true },
   );
 }
+
+/**
+ * 周辺街区の外装タイル：CITY_TILE.bays スパン × CITY_TILE.floors 層。1 層の下 32 % がスパンドレル帯、
+ * 各スパン左 6 % がマリオン（blender/common.py の city_material と同じ比率）。点灯窓は約 55 %。
+ * 基本色・自己発光・粗さの 3 枚を同じ乱数配置で描く。
+ */
+export const CITY_TILE = { bays: 16, floors: 8, floorH: 3.8, bayW: 1.5 };
+
+export function cityFacadeTextures(): { map: THREE.CanvasTexture; emissive: THREE.CanvasTexture; rough: THREE.CanvasTexture } {
+  const { bays, floors } = CITY_TILE;
+  const bw = 32;
+  const fh = 64;
+  const r = new Rng(31);
+  const cells: { lit: number; tone: number; blind: number }[] = [];
+  for (let j = 0; j < floors; j++) {
+    // 階ごとに点灯率を変える（空きフロア・会議室などのばらつき）
+    const rate = 0.25 + r.next() * 0.6;
+    for (let i = 0; i < bays; i++) cells.push({ lit: r.chance(rate) ? 0.65 + r.next() * 0.35 : 0, tone: r.next(), blind: r.next() * 0.45 });
+  }
+  const each = (g: CanvasRenderingContext2D, h: number, fn: (x: number, y: number, c: (typeof cells)[number]) => void) => {
+    for (let j = 0; j < floors; j++)
+      for (let i = 0; i < bays; i++) {
+        // キャンバス上端が v=1。j 層目の窓は下 32 % のスパンドレルを除いた部分
+        const yTop = h - (j + 1) * fh;
+        fn(i * bw, yTop, cells[j * bays + i]);
+      }
+    g.globalAlpha = 1;
+  };
+  const glassH = Math.round(fh * 0.68);
+  const mull = Math.max(2, Math.round(bw * 0.06));
+  const map = canvasTex(
+    'city.facade',
+    bays * bw,
+    floors * fh,
+    (g, w, h) => {
+      g.fillStyle = '#c4c2bc';
+      g.fillRect(0, 0, w, h);
+      each(g, h, (x, y, c) => {
+        const k = 38 + Math.round(c.tone * 16);
+        g.fillStyle = c.lit ? `rgb(${k + 70},${k + 64},${k + 52})` : `rgb(${k - 6},${k + 2},${k + 8})`;
+        g.fillRect(x + mull, y, bw - mull, glassH);
+        // ブラインド（上から）
+        g.fillStyle = 'rgba(220,218,210,0.55)';
+        g.fillRect(x + mull, y, bw - mull, Math.round(glassH * c.blind));
+      });
+      // スパンドレルの目地
+      g.fillStyle = 'rgba(0,0,0,0.12)';
+      for (let j = 0; j < floors; j++) g.fillRect(0, h - j * fh - 1, w, 1);
+    },
+    { repeat: true },
+  );
+  const emissive = canvasTex(
+    'city.facade.emit',
+    bays * bw,
+    floors * fh,
+    (g, w, h) => {
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, w, h);
+      each(g, h, (x, y, c) => {
+        if (!c.lit) return;
+        const b = Math.round(255 * c.lit);
+        g.fillStyle = `rgb(${b},${Math.round(b * 0.93)},${Math.round(b * 0.8)})`;
+        g.fillRect(x + mull, y + Math.round(glassH * c.blind), bw - mull, glassH - Math.round(glassH * c.blind));
+      });
+    },
+    { repeat: true },
+  );
+  const rough = canvasTex(
+    'city.facade.rough',
+    bays * bw,
+    floors * fh,
+    (g, w, h) => {
+      g.fillStyle = 'rgb(170,170,170)';
+      g.fillRect(0, 0, w, h);
+      each(g, h, (x, y) => {
+        g.fillStyle = 'rgb(28,28,28)';
+        g.fillRect(x + mull, y, bw - mull, glassH);
+      });
+    },
+    { repeat: true, srgb: false },
+  );
+  return { map, emissive, rough };
+}

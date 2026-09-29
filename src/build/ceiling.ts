@@ -76,7 +76,8 @@ export function buildCeiling(I: Instancer, pieces: WallPiece[]): CeilingResult {
   }
   // コア：ダウンライト
   for (const r of CORE_ROOMS) {
-    if (!['corridor', 'evhall', 'wc', 'pantry', 'vestibule'].includes(r.kind)) continue;
+    // 機械室・IDF・倉庫にも照明を入れる（無照明だとベイク GI で真っ黒になる）
+    if (!['corridor', 'evhall', 'wc', 'pantry', 'vestibule', 'machine', 'idf', 'storage'].includes(r.kind)) continue;
     const [x0, z0, x1, z1] = r.rect;
     for (let x = x0 + 0.9; x < x1 - 0.4; x += 1.8)
       for (let z = z0 + 0.9; z < z1 - 0.4; z += 1.8) {

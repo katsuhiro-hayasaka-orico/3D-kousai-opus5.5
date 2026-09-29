@@ -4,16 +4,18 @@ import './style.css';
 import { Instancer } from './core/instancer';
 import { acZoneOf } from './build/ceiling';
 import { ALL_ROOMS, GROUP_LABEL, Room, roomArea, roomAt, roomById } from './data/rooms';
-import { SPEC, TSUBO } from './data/spec';
+import { GROUND_Y, PLATE, SPEC, TSUBO } from './data/spec';
 import { jst, sunPosition } from './sun';
 import { Labels } from './ui/labels';
 import { Minimap } from './ui/minimap';
 import { WalkControls } from './ui/walk';
 import { LayerKey, World, buildWorld } from './world';
+import { M } from './core/materials';
 import { aboutHtml } from './about';
 import { EMIT_LAYER, registerEmitters } from './gfx/bloom';
 import { Lighting } from './gfx/environment';
 import { Lightmaps } from './gfx/lightmaps';
+import { CityClearance } from './gfx/clearance';
 import { AOParams, PostFX, QUALITIES, Quality, initialQuality, saveQuality } from './gfx/post';
 import { Gallery } from './ui/gallery';
 import { PanoViewer } from './ui/pano';
@@ -126,6 +128,7 @@ let world: World;
 let walk: WalkControls;
 let minimap: Minimap;
 let lightmaps: Lightmaps;
+let clearance: CityClearance;
 let mode: Mode = 'orbit';
 
 const tick = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
@@ -140,7 +143,11 @@ async function init(): Promise<void> {
   labels.buildAxes(world.axes);
   labels.buildAc(world.acCenters);
   labels.poi('新宿通り →（南）', 0, -5.4, 33);
-  labels.poi('麹町ミレニアムガーデン（オリコ本社）※概略', 2, 30, 82);
+  clearance = new CityClearance(
+    world.cityBlocks,
+    new THREE.Box3(new THREE.Vector3(PLATE.x0, GROUND_Y, PLATE.z0), new THREE.Vector3(PLATE.x1, GROUND_Y + SPEC.height, PLATE.z1)),
+  );
+  labels.poi('麹町ミレニアムガーデン（オリコ本社）※概略', 2, 30, 82, () => world.cityBlocks[0].visible);
   registerEmitters(scene);
   lightmaps = new Lightmaps(world, renderer);
 
@@ -216,6 +223,8 @@ function setSun(hours: number): void {
   lightmaps.setSun(k, elevation);
   lighting.setDaylight(lightmaps.ambientDaylight);
   sun.color.setHSL(0.08, 0.6 - 0.45 * k, 0.72 + 0.2 * k);
+  // 周辺街区の点灯窓：昼はガラスの反射に埋もれ、日没に向けて浮かび上がる
+  (M('ghost.city') as THREE.MeshStandardMaterial).emissiveIntensity = 0.3 + 1.3 * (1 - k) ** 2;
   renderer.shadowMap.needsUpdate = true;
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
@@ -243,6 +252,7 @@ function applyModeLayers(): void {
   layer('eaves', indoor || t('context'));
   layer('site', mode !== 'plan' && t('context'));
   layer('upper', mode === 'exterior' && t('upper'));
+  layer('floors', mode === 'exterior' && t('upper'));
   layer('zones', t('zones'));
   layer('ac', t('ac'));
   layer('wifi', t('wifi'));
@@ -420,7 +430,7 @@ function buildPanel(): void {
     ['evac', '避難経路', false],
     ['grid', '通り芯・扉軌跡', false],
     ['context', '外構・周辺', true],
-    ['upper', '他階（外観時）', true],
+    ['upper', '上階・周辺（外観時）', true],
     ['gi', 'ベイクGI（Blender）', true],
   ];
   const box = $('#layers');
@@ -709,6 +719,7 @@ function loop(): void {
   if (mode === 'walk') walk.update(dt);
   else if (mode === 'plan') planCtl.update();
   else orbit.update();
+  clearance.update(persp.position, mode === 'exterior');
 
   lighting.update();
   post.render(dt);
@@ -768,6 +779,7 @@ window.addEventListener('resize', onResize);
     t.apply(v);
   },
   stats: () => world.stats,
+  cityHidden: () => clearance.hidden,
   lightmapInfo: () => ({ hash: world.lightmap.hash, wallDensity: world.lightmap.wallDensity, wallFill: world.lightmap.wallFill, meshes: world.lightmap.meshes.length }),
   /** Blender 連携：scene.glb と meta.json をダウンロード（scripts/export-scene.mjs から呼ぶ） */
   exportScene: async () => {

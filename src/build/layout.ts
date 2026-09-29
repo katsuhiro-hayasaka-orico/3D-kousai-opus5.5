@@ -758,6 +758,9 @@ export function buildLayout(I: Instancer): LayoutResult {
     L.add('fire.ext', -5.5, -12.3, 0);
     L.add('fire.ext', 5.5, -12.3, 0);
     L.add('hydrant', -3.8, -12.3, 0, { title: '屋内消火栓', lines: [] });
+    // 階段室：吹き抜けで天井面がないため、階の踊場の上（廊下側の壁）に壁付けブラケット
+    const bracket: PickInfo = { title: '階段室ブラケット照明', lines: ['上下配光の壁付け照明'] };
+    for (const cx of [-14.4, 14.4]) L.add('wall.bracket', cx, -12.5, PI, bracket, 2.3);
     // 外調機
     L.add('ahu.unit', -7.2, -16.2, 0, { title: '外調機（全熱交換器）', lines: ['外気の予冷・予熱と換気'] });
     L.add('ahu.unit', 7.2, -16.2, 0, { title: '外調機（全熱交換器）', lines: ['外気の予冷・予熱と換気'] });
