@@ -318,7 +318,7 @@ export function buildSite(pb: PB, trees: { x: number; z: number; s: number }[]):
   }
   // 歩道・車道（新宿通り、幅員約 22m と仮定）
   pb.add(floorRectGeo(-160, 25.5, 160, 30, y + 0.12, 2), 'paving', new THREE.Matrix4(), true);
-  pb.boxX('facade.stone', -160, y, 29.85, 160, y + 0.15, 30.0);
+  for (let x = -160; x < 160; x += 8) pb.boxX('facade.stone', x, y, 29.85, x + 8, y + 0.15, 30.0); // 縁石（区画線と同じ理由で分割）
   pb.add(floorRectGeo(-160, 30, 160, 52, y + 0.001, 6), 'asphalt', new THREE.Matrix4(), true);
   pb.add(floorRectGeo(-160, 52, 160, 57, y + 0.12, 2), 'paving', new THREE.Matrix4(), true);
   // 区画線
@@ -326,10 +326,14 @@ export function buildSite(pb: PB, trees: { x: number; z: number; s: number }[]):
     pb.boxX('lane', x, y + 0.004, 35.4, x + 4, y + 0.01, 35.55);
     pb.boxX('lane', x, y + 0.004, 46.45, x + 4, y + 0.01, 46.6);
   }
-  pb.boxX('laneYellow', -160, y + 0.004, 40.9, 160, y + 0.01, 41.05);
-  pb.boxX('laneYellow', -160, y + 0.004, 41.15, 160, y + 0.01, 41.3);
-  pb.boxX('lane', -160, y + 0.004, 30.4, 160, y + 0.01, 30.55);
-  pb.boxX('lane', -160, y + 0.004, 51.45, 160, y + 0.01, 51.6);
+  // 実線は 8 m ごとに分ける（長さ 320 m・厚さ 6 mm の 1 枚の箱は、カメラの背後まで伸びる極端に細長い三角形になり、
+  // 環境によっては深度の補間が崩れて床や家具の手前に点線状に透けて描かれた）
+  for (let x = -160; x < 160; x += 8) {
+    pb.boxX('laneYellow', x, y + 0.004, 40.9, x + 8, y + 0.01, 41.05);
+    pb.boxX('laneYellow', x, y + 0.004, 41.15, x + 8, y + 0.01, 41.3);
+    pb.boxX('lane', x, y + 0.004, 30.4, x + 8, y + 0.01, 30.55);
+    pb.boxX('lane', x, y + 0.004, 51.45, x + 8, y + 0.01, 51.6);
+  }
   // 街路樹
   for (let x = -150; x <= 150; x += 9) {
     trees.push({ x: x + 2, z: 27.8, s: 1 });
