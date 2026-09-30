@@ -4,6 +4,7 @@
 #   bash blender/run_final.sh            # すべて
 #   bash blender/run_final.sh bake       # ベイクだけ
 #   bash blender/run_final.sh render     # レンダーだけ
+#   bash blender/run_final.sh resume     # レンダーの続き（renders.json で final になっていないショットだけ）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=.venv-blender/bin/python
@@ -25,4 +26,7 @@ if [[ "$what" == all || "$what" == bake ]]; then
 fi
 if [[ "$what" == all || "$what" == render ]]; then
   step render_final blender/render.py --shots all --quality final
+fi
+if [[ "$what" == resume ]]; then
+  step render_resume blender/render.py --shots remaining --quality final
 fi

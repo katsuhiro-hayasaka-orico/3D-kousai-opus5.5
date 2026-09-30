@@ -6,6 +6,7 @@ Cycles の静止画・360° パノラマ（docs/GRAPHICS-PIPELINE.md §5）。
   .venv-blender/bin/python blender/render.py --list
 
   .venv-blender/bin/python blender/render.py --resave [--shots ...]   （PNG から JPEG を作り直すだけ）
+  .venv-blender/bin/python blender/render.py --shots remaining --quality final   （中断からの再開：未完成のショットだけ）
 
   出力：Web 版に同梱する縮小版 src/assets/renders/<id>.jpg（静止画 1600 px 幅、パノラマ 3072 px 幅）と
         <id>_thumb.jpg（480 px 幅）、renders.json（部分実行でも追記・更新）。パノラマのファイル名は pano_<場所>.jpg。
@@ -248,7 +249,8 @@ def update_json(entries: list[dict]) -> Path:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description='Cycles 静止画・パノラマ')
-    ap.add_argument('--shots', default='all')
+    ap.add_argument('--shots', default='all',
+                    help='all、id のカンマ区切り、または remaining（renders.json で --quality の品質になっていないものだけ。中断からの再開用）')
     ap.add_argument('--quality', choices=QUALITY, default='preview')
     ap.add_argument('--samples', type=int, help='全ショット共通のサンプル数（既定は品質プリセット）')
     ap.add_argument('--scale', type=float, default=1.0, help='品質プリセットの解像度にさらに掛ける倍率')
@@ -259,7 +261,18 @@ def main() -> None:
         for s in SHOTS:
             print(f'{s.id:18s} {s.kind:6s} {s.variant:6s} EV{s.ev:+.1f}  {s.title}')
         return
-    ids = [s.id for s in SHOTS] if args.shots == 'all' else [x.strip() for x in args.shots.split(',') if x.strip()]
+    if args.shots == 'all':
+        ids = [s.id for s in SHOTS]
+    elif args.shots == 'remaining':
+        path = C.RENDERS_DIR / 'renders.json'
+        done = {e['id'] for e in json.loads(path.read_text(encoding='utf-8'))
+                if e.get('quality') == args.quality} if path.exists() else set()
+        ids = [s.id for s in SHOTS if s.id not in done]
+        C.log(f'残り {len(ids)} ショット（{args.quality} 済み {len(done)}）: {",".join(ids)}')
+        if not ids:
+            return
+    else:
+        ids = [x.strip() for x in args.shots.split(',') if x.strip()]
     unknown = [i for i in ids if i not in {s.id for s in SHOTS}]
     if unknown:
         raise SystemExit(f'不明なショット: {unknown}（--list で一覧）')

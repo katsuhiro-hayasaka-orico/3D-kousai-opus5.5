@@ -289,7 +289,7 @@ Filter Glossy 1.0、永続データ（同じバリアントのショットを続
   所要 3 時間 14 分）。レンダーは `ext-se-day` の 1 枚だけ最終品質で、残り 23 ショットはプレビュー品質のまま
   （`renders.json` の各項目の `quality` で区別できる）。再開するには、`scripts/export-scene.mjs` で `blender/cache/` を書き出し
   （新しいコンテナでは `.venv-blender` の作成も）、`verify.py` を通してから残りを描く：
-  `render.py --shots ext-se-dusk,ext-street,balcony,ev-hall,entrance,lounge,it-south,it-east,soc,lab,agile,risk-south,monitoring,meeting-a,booths,axo,plan,pano-entrance,pano-lounge,pano-it-south,pano-soc,pano-risk-south,pano-meeting-a --quality final`
+  `render.py --shots remaining --quality final`（または `bash blender/run_final.sh resume`。renders.json で final になっていないショットだけを描く）
 - 12F のセットバック（北側ウイング上部のテラス）は再現していない。12F も 2F と同じインスタンス。上階はどれも 2F の複製（偶数階は東西反転）。
 - 周辺街区は概略の箱。直射日光の影は落とさないが、天空光を遮り、反射光も計算する（SOC の北窓に入る反射光など）。外観ショットではカメラを含む箱と視線を遮る箱を隠す。
 - 廊下・EV ホール・水回り・機械室・倉庫などにはダウンライト、階段室には廊下側のブラケット灯 1 灯を置いた（照明計画は推定）。
