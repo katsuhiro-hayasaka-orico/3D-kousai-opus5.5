@@ -286,7 +286,8 @@ Filter Glossy 1.0、永続データ（同じバリアントのショットを続
 ## 9. 既知の制限
 
 - **最終品質の実行状況（2026-09-29 時点）**：ライトマップ 3 枚と室内 HDR は最終品質（`lightmaps.json` の `quality: "final"`、
-  所要 3 時間 14 分）。レンダーは `ext-se-day` の 1 枚だけ最終品質で、残り 23 ショットはプレビュー品質のまま
+  所要 3 時間 14 分）。レンダーは 24 ショット中 21 ショットが最終品質（2026-09-30 時点。静止画は 1 枚 13〜20 分、
+  パノラマは 1 枚約 29 分、CPU の競合なし）で、残り 3 ショット（`ext-se-dusk`・`meeting-a`・`booths`）はプレビュー品質のまま
   （`renders.json` の各項目の `quality` で区別できる）。再開するには、`scripts/export-scene.mjs` で `blender/cache/` を書き出し
   （新しいコンテナでは `.venv-blender` の作成も）、`verify.py` を通してから残りを描く：
   `render.py --shots remaining --quality final`（または `bash blender/run_final.sh resume`。renders.json で final になっていないショットだけを描く）
