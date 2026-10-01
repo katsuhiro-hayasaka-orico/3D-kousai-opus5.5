@@ -17,6 +17,7 @@
           <div class="t2">オリエントコーポレーション　IT・システムグループ／リスク管理グループ</div>
         </div>
         <div class="tb-right">
+          <button id="tourBtn" title="カット割りした視点を自動で巡る（外観・平面図・全エリア・ウォークスルー・全室）">▶ ツアー</button>
           <button id="photoBtn" hidden title="Blender（Cycles）でレンダリングした静止画・360°パノラマ">フォトリアル<small>（Blender Cycles）</small></button>
           <nav id="modes" role="tablist" aria-label="表示モード">
             <button data-mode="orbit" class="on" role="tab">俯瞰</button>
@@ -26,6 +27,8 @@
           </nav>
         </div>
       </header>
+
+      <div id="tourMenu" hidden role="menu" aria-label="ツアー"></div>
 
       <button id="panelToggle" aria-label="パネルを開閉">☰</button>
       <aside id="panel" aria-label="コントロールパネル">

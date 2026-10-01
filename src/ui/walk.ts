@@ -79,6 +79,12 @@ export class WalkControls {
     this.apply();
   }
 
+  /** その位置に立てるか（壁・柱・家具に当たらないか）。ツアーのカメラ移動量を決めるのに使う */
+  free(x: number, z: number): boolean {
+    return !this.blocked(this.tmpFree.set(x, z));
+  }
+  private tmpFree = new THREE.Vector2();
+
   private blocked(p: THREE.Vector2): boolean {
     const r = this.radius;
     for (const o of this.obstacles) {

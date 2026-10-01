@@ -22,6 +22,7 @@ import { PanoViewer } from './ui/pano';
 import { RENDERS } from './ui/renders';
 
 import { Mode, PRESETS, Preset } from './data/presets';
+import { PROGRAMS, Program, TOUR_KEYS, Tour, TourKey } from './ui/tour';
 
 const PI = Math.PI;
 
@@ -164,6 +165,7 @@ async function init(): Promise<void> {
 
   walk = new WalkControls(persp, renderer.domElement, world.colliders, world.obstacles);
   minimap = new Minimap($('#mapbox'), (x, z) => {
+    if (tour.active) return;
     if (mode === 'walk') walk.place(x, z, walk.yaw);
     else if (mode === 'plan') flyPlan(x, z, ortho.zoom);
     else flyTo(new THREE.Vector3(x + 10, 22, z + 18), new THREE.Vector3(x, 0, z));
@@ -415,6 +417,150 @@ function flyPlan(x: number, z: number, zoom: number): void {
 }
 
 // ------------------------------------------------------------
+// 自動ツアー（src/ui/tour.ts）
+// ------------------------------------------------------------
+/** 全室めぐりで床に描く室の枠 */
+const tourMark = new THREE.Group();
+tourMark.name = 'tourHighlight';
+tourMark.renderOrder = 5;
+scene.add(tourMark);
+const tourMarkMat = new THREE.MeshBasicMaterial({ color: 0xff8a1f, toneMapped: false });
+const tourFillMat = new THREE.MeshBasicMaterial({ color: 0xff8a1f, transparent: true, opacity: 0.14, depthWrite: false, toneMapped: false });
+
+function setTourMark(rect: [number, number, number, number] | null): void {
+  for (const c of tourMark.children) (c as THREE.Mesh).geometry.dispose();
+  tourMark.clear();
+  if (!rect) return;
+  const [x0, z0, x1, z1] = rect;
+  const y = 0.04;
+  const w = 0.14;
+  const bar = (cx: number, cz: number, sx: number, sz: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.02, sz), tourMarkMat);
+    m.position.set(cx, y, cz);
+    tourMark.add(m);
+  };
+  bar((x0 + x1) / 2, z0 + w / 2, x1 - x0, w);
+  bar((x0 + x1) / 2, z1 - w / 2, x1 - x0, w);
+  bar(x0 + w / 2, (z0 + z1) / 2, w, z1 - z0);
+  bar(x1 - w / 2, (z0 + z1) / 2, w, z1 - z0);
+  const fill = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0).rotateX(-Math.PI / 2), tourFillMat);
+  fill.position.set((x0 + x1) / 2, y - 0.005, (z0 + z1) / 2);
+  tourMark.add(fill);
+}
+
+/** ツアー開始時に退避する状態 */
+let tourSaved: {
+  mode: Mode;
+  pos: THREE.Vector3;
+  target: THREE.Vector3;
+  walk: [number, number, number, number];
+  plan: [number, number, number];
+  time: number;
+  toggles: Record<TourKey, boolean>;
+  panelClosed: boolean;
+} | null = null;
+
+function setToggle(k: string, v: boolean): void {
+  const t = toggles[k];
+  if (!t || t.on === v) return;
+  t.on = v;
+  if (t.input) t.input.checked = v;
+  t.apply(v);
+}
+
+const tour = new Tour($('#app'), {
+  enter: () => {
+    const timeEl = $<HTMLInputElement>('#time');
+    tourSaved = {
+      mode,
+      pos: persp.position.clone(),
+      target: orbit.target.clone(),
+      walk: [walk.pos.x, walk.pos.y, walk.yaw, walk.pitch],
+      plan: [planCtl.target.x, planCtl.target.z, ortho.zoom],
+      time: parseFloat(timeEl.value),
+      toggles: Object.fromEntries(TOUR_KEYS.map((k) => [k, toggles[k]?.on ?? false])) as Record<TourKey, boolean>,
+      panelClosed: $('#panel').classList.contains('closed'),
+    };
+    gallery.close();
+    $('#info').hidden = true;
+    $('#tourMenu').hidden = true;
+    $('#panel').classList.add('closed');
+    applyViewOffset();
+  },
+  leave: () => {
+    const s = tourSaved;
+    tourSaved = null;
+    if (!s) return;
+    for (const k of TOUR_KEYS) setToggle(k, s.toggles[k]);
+    $('#panel').classList.toggle('closed', s.panelClosed);
+    setMode(s.mode, true);
+    if (s.mode === 'walk') walk.place(...s.walk);
+    else if (s.mode === 'plan') flyPlan(s.plan[0], s.plan[1], s.plan[2]);
+    else flyTo(s.pos, s.target, true);
+    $<HTMLInputElement>('#time').value = String(s.time);
+    setSun(s.time);
+    applyViewOffset();
+  },
+  setMode: (m) => {
+    setMode(m, true);
+    fly = null;
+    orbit.enabled = false;
+    planCtl.enabled = false;
+    walk.enabled = false;
+    $('#walkui').hidden = true;
+    $('#hintbar').hidden = true;
+  },
+  apply: (p) => {
+    if (p.kind === 'persp') {
+      persp.position.copy(p.pos);
+      orbit.target.copy(p.target);
+      persp.lookAt(p.target);
+    } else if (p.kind === 'walk') {
+      walk.place(p.x, p.z, p.yaw, p.pitch);
+    } else {
+      planCtl.target.set(p.x, 0, p.z);
+      ortho.position.set(p.x, 200, p.z);
+      ortho.zoom = p.zoom;
+      ortho.updateProjectionMatrix();
+      ortho.lookAt(p.x, 0, p.z);
+    }
+  },
+  setSun: (h) => {
+    $<HTMLInputElement>('#time').value = String(h);
+    setSun(h);
+  },
+  setOverlay: (o) => {
+    for (const k of TOUR_KEYS) setToggle(k, o[k]);
+  },
+  highlight: setTourMark,
+  free: (x, z) => walk.free(x, z),
+  get stats() {
+    return world.stats;
+  },
+  canvas: renderer.domElement,
+});
+
+function buildTourMenu(): void {
+  const menu = $('#tourMenu');
+  menu.innerHTML = `
+    <div class="tm-head">自動ツアー</div>
+    ${PROGRAMS.map((p) => `<button data-p="${p.key}" role="menuitem"><b>${p.label}</b><span>${p.note}</span></button>`).join('')}
+    <label class="tm-rec"><input type="checkbox" id="tourRec" /> 録画して保存（字幕入り WebM）</label>
+    <div class="tm-hint">Space：一時停止　←／→：前後のカット　Esc：終了</div>`;
+  const btn = $('#tourBtn');
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+  };
+  menu.querySelectorAll<HTMLButtonElement>('[data-p]').forEach((b) => {
+    b.onclick = () => tour.start(b.dataset.p as Program, $<HTMLInputElement>('#tourRec').checked);
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !menu.contains(e.target as Node) && e.target !== btn) menu.hidden = true;
+  });
+}
+
+// ------------------------------------------------------------
 // プリセット
 // ------------------------------------------------------------
 function goPreset(p: Preset): void {
@@ -506,6 +652,7 @@ function buildPanel(): void {
   const gain = $<HTMLInputElement>('#giGain');
   gain.disabled = true;
   gain.oninput = () => setGIGain(parseFloat(gain.value));
+  buildTourMenu();
   if (RENDERS.length) {
     const pb = $('#photoBtn');
     pb.hidden = false;
@@ -601,7 +748,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   if (!downAt) return;
   const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
   downAt = null;
-  if (moved > 5) return;
+  if (moved > 5 || tour.active) return;
   pick(e.clientX, e.clientY);
 });
 
@@ -798,14 +945,16 @@ function loop(): void {
     if (fly.t >= 1) fly = null;
   }
   if (world.layers.people.visible) world.walkers.update(dt);
-  // ギャラリー表示中は ←/→ などのキーで裏の歩行カメラを動かさない
-  if (mode === 'walk' && !gallery.isOpen) walk.update(dt);
+  // ツアー中はツアーがカメラを置く
+  if (tour.active) tour.update(dt);
+  else if (mode === 'walk' && !gallery.isOpen) walk.update(dt);
   else if (mode === 'plan') planCtl.update();
   else orbit.update();
   clearance.update(persp.position, mode === 'exterior');
 
   lighting.update();
   post.render(dt);
+  tour.afterRender();
   labels.update(scene, camera, viewport.clientWidth, viewport.clientHeight, true);
 
   // ミニマップ・方位
@@ -866,6 +1015,11 @@ window.addEventListener('resize', onResize);
   },
   stats: () => world.stats,
   cityHidden: () => clearance.hidden,
+  /** 自動ツアー：program = 'highlight' | 'rooms' | 'all' */
+  tour: (program: Program = 'highlight', record = false) => tour.start(program, record),
+  tourSeek: (sec: number) => tour.seek(sec),
+  tourState: () => tour.state,
+  tourStop: () => tour.stop(),
   /** 撮影用：外観・俯瞰のカメラを任意の位置・注視点へ（three.js 座標） */
   view: (pos: [number, number, number], target: [number, number, number]) => {
     fly = null;

@@ -25,7 +25,7 @@ node scripts/shoot.mjs http://localhost:5173/ shots '[{"eval":"__app.goPreset(\"
 ```
 
 - Chromium は `CHROME_PATH`、未指定なら `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`（SwiftShader でソフトウェア WebGL。初回ロードは約 10 秒）。
-- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`presets()`、`toggle(キー, bool)`（キーは UI の表示レイヤー：furniture / people / labels / ceiling / zones / ac / wifi / evac / grid / context / upper / gi。LayerKey ではない。外構は context、上階・周辺は upper）、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`view(pos, target)`（外観・俯瞰のカメラを任意位置へ）、`gfx()`、`exportScene()`。
+- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`presets()`、`toggle(キー, bool)`（キーは UI の表示レイヤー：furniture / people / labels / ceiling / zones / ac / wifi / evac / grid / context / upper / gi。LayerKey ではない。外構は context、上階・周辺は upper）、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`tour(program, record)`／`tourSeek(秒)`／`tourState()`／`tourStop()`（自動ツアー。program は 'highlight' | 'rooms' | 'all'）、`view(pos, target)`（外観・俯瞰のカメラを任意位置へ）、`gfx()`、`exportScene()`。
 - 撮影結果は Read ツールで画像を見て確認する（`shots/` は gitignore 済み）。Blender のベイク・レンダー中は CPU が埋まるので、`nice` を付け、`W=1100 H=680` 程度に小さくして撮る。
 - URL に `?lmdebug=1` を付けると、ライトマップの代わりに UV 検証用の合成画像（室の輪郭・グリッド・壁面の向き）を貼る。
 
@@ -50,6 +50,7 @@ three.js 座標は **x = 東、y = 上、z = 南（北は -z）**、単位は m�
 - `src/world.ts` がレイヤー（`LayerKey`：structure / furniture / people / ceiling / eaves / site / upper（周辺街区）/ floors（上階・屋上）/ zones …）ごとの Group を組み立て、集計値（`world.stats`）を返す。`src/main.ts` はモード（俯瞰／平面図／ウォークスルー／外観）、UI、ピック、ループ、`__app` を担当する。
 - `src/gfx/`：描画の強化。`lightmaps.ts`（ベイク GI の適用。上階の複製にも同じマテリアルを当てる）、`post.ts`（EffectComposer：MSAA・GTAO・選択的 Bloom・Neutral トーンマッピング・SMAA、画質 高／標準／軽量）、`bloom.ts`、`sky.ts`（Sky シェーダ＋PMREM）、`environment.ts`（モード別の背景・IBL・半球光）、`clearance.ts`（外観で建物を遮る街区を隠す）、`device.ts`。
 - `src/ui/gallery.ts`・`pano.ts`・`renders.ts`：Blender レンダーのギャラリーと 360° ビューア（`src/assets/renders/renders.json` を読む）。
+- `src/ui/tour.ts`：自動ツアー（カットの一覧 `Cut` を作り、`TourHost`（main.ts）経由でモード・カメラ・時刻・表示レイヤーを切り替えて再生。字幕入り WebM 録画）。カットはプリセット（`presets.ts`）と室データ（`rooms.ts`）から組み立てるので、プリセットや室を増減するとツアーにも反映される。ウォークスルーのカットは `WalkControls.free` で壁・家具に当たらない範囲だけ前進する。
 
 ### 描画の仕組み（`src/core/`）
 - `PB`（パーツビルダー、`geom.ts`）でジオメトリ＋**マテリアルキー**＋行列のパーツを組み立てる。
