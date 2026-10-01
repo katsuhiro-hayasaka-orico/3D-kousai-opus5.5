@@ -11,7 +11,7 @@ import type { LayerKey, World } from './world';
 /**
  * Blender 連携用の書き出し。
  *
- *  scene.glb : 躯体・天井・家具・人物・外構・他階（ゴースト）を glTF 2.0 で。
+ *  scene.glb : 躯体・天井・家具・人物・外構・周辺街区（L_upper）を glTF 2.0 で。
  *              InstancedMesh は EXT_mesh_gpu_instancing（Blender はリンク複製として読み込む）。
  *              インスタンスごとの色（人物の服・肌など）は Blender が読まないため、
  *              色ごとにマテリアル派生「キー#rrggbb」を作って InstancedMesh を分割する。

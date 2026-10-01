@@ -148,7 +148,7 @@ export function buildWorld(scene: THREE.Scene, progress: (msg: string) => void =
   const ceil = buildCeiling(I, walls.pieces);
   layers.ceiling.add(buildStatic(ceil.pb, 'ceilingPlanes', { cast: false, lightmap: true }));
 
-  // ---- 外構・他階 ----
+  // ---- 外構・周辺街区 ----
   progress('外観・周辺を生成中…');
   const site = new PB();
   const trees: { x: number; z: number; s: number }[] = [];

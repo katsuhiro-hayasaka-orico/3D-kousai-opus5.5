@@ -285,12 +285,11 @@ Filter Glossy 1.0、永続データ（同じバリアントのショットを続
 
 ## 9. 既知の制限
 
-- **最終品質の実行状況（2026-09-29 時点）**：ライトマップ 3 枚と室内 HDR は最終品質（`lightmaps.json` の `quality: "final"`、
-  所要 3 時間 14 分）。レンダーは 24 ショット中 21 ショットが最終品質（2026-09-30 時点。静止画は 1 枚 13〜20 分、
-  パノラマは 1 枚約 29 分、CPU の競合なし）で、残り 3 ショット（`ext-se-dusk`・`meeting-a`・`booths`）はプレビュー品質のまま
-  （`renders.json` の各項目の `quality` で区別できる）。再開するには、`scripts/export-scene.mjs` で `blender/cache/` を書き出し
-  （新しいコンテナでは `.venv-blender` の作成も）、`verify.py` を通してから残りを描く：
-  `render.py --shots remaining --quality final`（または `bash blender/run_final.sh resume`。renders.json で final になっていないショットだけを描く）
+- **最終品質で通して実行済み**（2026-09-29〜10-01）：ライトマップ 3 枚と室内 HDR（`lightmaps.json` の `quality: "final"`、
+  所要 3 時間 14 分）と、全 24 ショット（`renders.json` の各項目が `quality: "final"`）。CPU 4 コア・競合なしの実測で、
+  静止画 18 枚 計 6.0 時間（1 枚 8〜26 分）、パノラマ 6 枚 計 2.8 時間（1 枚 25〜31 分）。§8 の見積もり（競合あり）より速い。
+  実行中にコンテナが回収されて止まった場合は、`render.py --shots remaining --quality final`
+  （または `bash blender/run_final.sh resume`）で、final になっていないショットだけを描き直せる
 - 12F のセットバック（北側ウイング上部のテラス）は再現していない。12F も 2F と同じインスタンス。上階はどれも 2F の複製（偶数階は東西反転）。
 - 周辺街区は概略の箱。直射日光の影は落とさないが、天空光を遮り、反射光も計算する（SOC の北窓に入る反射光など）。外観ショットではカメラを含む箱と視線を遮る箱を隠す。
 - 廊下・EV ホール・水回り・機械室・倉庫などにはダウンライト、階段室には廊下側のブラケット灯 1 灯を置いた（照明計画は推定）。

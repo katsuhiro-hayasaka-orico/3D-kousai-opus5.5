@@ -867,7 +867,9 @@ window.addEventListener('resize', onResize);
   openGallery: (i?: number) => (i === undefined ? gallery.open() : gallery.show(i)),
   openPano: (id: string) => {
     const it = RENDERS.find((r) => r.id === id && r.kind === 'pano');
-    if (it) pano.open(it);
+    if (!it) return;
+    gallery.close(); // 画面の操作（ギャラリーのカード）と同じく、ギャラリーを閉じてから開く
+    pano.open(it);
   },
   closePano: () => pano.close(),
 };
