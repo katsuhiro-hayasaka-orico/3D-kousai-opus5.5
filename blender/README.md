@@ -42,8 +42,8 @@ $PY blender/bake_lightmaps.py --quality final --atlases wall --no-env   # 一部
 $PY blender/render.py --list                       # ショット一覧
 $PY blender/render.py --shots it-south,soc --quality preview
 $PY blender/render.py --shots all --quality final   # 約 13〜14 時間
-$PY blender/render.py --shots ext-se-day --quality final --samples 256 --scale 0.5   # 試し描き（原寸は保存しない）
-$PY blender/render.py --resave                     # 中間 PNG から JPEG・サムネイルを作り直す（縮小幅を変えたときなど）
+$PY blender/render.py --shots ext-se-day --quality final --samples 256 --scale 0.5   # 試し描き（blender/out/renders/trial/ に PNG だけ。同梱画像・renders.json・原寸は変えない）
+$PY blender/render.py --resave                     # 中間 PNG から JPEG・サムネイルを作り直す（縮小幅を変えたときなど。PNG の寸法が renders.json と違うショットは飛ばす）
 
 bash blender/run_final.sh                          # 最終品質の一括実行（約 18 時間、ログは blender/out/*.log）
 ```
@@ -69,7 +69,7 @@ bash blender/run_final.sh                          # 最終品質の一括実行
 - **値**：画素 p（sRGB をデコードした 0〜1）× `scale` = ベイク値。照度 E = π × ベイク値 × 1,000 lx（単位は §5）。
   `scale` は有効画素の最大チャンネルの 99.5 パーセンタイル（それ以上は 1.0 に飽和、約 0.5% の画素）。
 - **UV**：v は画像上端 = 0（Blender の画像をそのまま上から書き出す）。`verify.py` で実測確認済み（§7）。
-- **予約ブロック**（`meta.json` の `atlases.*.dummy`）と、どの UV も参照しない領域は有効画素の中央値で塗る。
+- **予約ブロック**（`meta.json` の `lightmap.atlases.*.dummy`）と、どの UV も参照しない領域は有効画素の中央値で塗る。
 - **手順**：アトラスごとに対象メッシュ（`meta.json` の `lightmap.meshes`、2F の原本）を 1 オブジェクトに結合 →
   `UVMap.001` へベイク（余白 8 px 相当、EXTEND）→ OIDN（コンポジターの Denoise、HDR・Accurate）→ 予約ブロック塗り → WebP（品質 92）。
   結合するのは、別オブジェクトのまま同じ画像へ焼くと余白の拡張が隣のメッシュの画素を上書きするため。
@@ -82,7 +82,7 @@ bash blender/run_final.sh                          # 最終品質の一括実行
   静止画 `<id>.jpg`（1600 px 幅、JPEG 品質 85）と `<id>_thumb.jpg`（480×270）。
 - パノラマ `pano_<場所>.jpg`（3072 px 幅、品質 82）と `pano_<場所>_thumb.jpg`（480×240）。`renders.json` の `id` は `pano-<場所>`
   （静止画の `id` と重ならないように）。画像中央 = `heading`（北から時計回りの方位、プリセットの向き）、右へ時計回り、上端 = 天頂。
-- final 品質を原寸（`--scale 1`）で描いたときだけ、原寸の JPEG（品質 92、4:4:4）を `docs/renders/<id>.jpg` にも保存する
+- final 品質を原寸（`--scale 1`）で描いたときだけ、原寸の JPEG（品質 92、4:4:4）を `docs/renders/` にも保存する（ファイル名は同梱版と同じ。静止画は `<id>.jpg`、パノラマは `pano_<場所>.jpg`。パスは renders.json の `original`）
   （README 用・ダウンロード用）。中間の PNG は `blender/out/renders/`。
 - `renders.json` は契約の項目（`id, kind, title, preset, file, thumb, w, h, samples, seconds, sunHours, note`）と
   `webW`・`webH`（同梱画像の寸法。`w`・`h` はレンダー解像度）、`original`（原寸を保存したときのパス）に加えて
@@ -227,9 +227,9 @@ Filter Glossy 1.0、永続データ（同じバリアントのショットを続
 | Nishita 天空の太陽位置（10:30、検証時だけ太陽ディスクを出す） | 同上 | 154.89° 49.68° |
 | 太陽ランプ／天空（8:30） | 121.48° 33.34° | 121.54° 33.38°／121.94° 33.11° |
 | 太陽ランプ／天空（14:00） | 230.64° 38.85° | 230.52° 38.90°／230.28° 38.97° |
-| 10:30 の直射日光：2F 南面ガラスの 5 cm 外（鉛直・南向き） | 62,696 lx（ガラス・庇なしの理論値 E⊥ cos θ） | 69,217 lx（背後のガラスの反射を含む）。太陽への線上に周辺街区 `city.0` があり、素通しの仕組みも試している |
+| 10:30 の直射日光：2F 南面ガラスの 5 cm 外（鉛直・南向き） | 62,696 lx（ガラス・庇なしの理論値 E⊥ cos θ） | 69,196 lx（背後のガラスの反射を含む）。太陽への線上に周辺街区 `city.0` があり、素通しの仕組みも試している |
 | 同：北面コア外壁の外（鉛直・北向き） | ≒ 0 | 299 lx |
-| 天空光の推定に偏りがないか（`bake`、上階は蓋、512 spp。天空光 = bake − night） | BSDF サンプリングだけの基準（world の sampling_method = NONE、ポータルなし）と相対 8% か 20 lx 以内 | 本番／基準：SOC 中央 91／93、SOC 北窓際 437／447、集中席（北西）127／123、IT南 中央 56／57、IT南 窓際 360／365 lx（参考：周辺街区を外すと 404／1,241／565／238／1,222 lx） |
+| 天空光の推定に偏りがないか（`bake`、上階は蓋、512 spp。天空光 = bake − night） | BSDF サンプリングだけの基準（world の sampling_method = NONE、ポータルなし）と相対 8% か 20 lx 以内 | 本番／基準：SOC 中央 96／93、SOC 北窓際 438／447、集中席（北西）121／123、IT南 中央 61／57、IT南 窓際 358／365 lx（参考：周辺街区を外すと 408／1,241／558／243／1,221 lx）。2026-09-29 の最終ベイク前の検証 |
 | ライトマップ floor の UV（点光源 three (30, 0.3, 12)） | u 0.8606, v 0.7523（上端から） | 0.8608, 0.7529（誤差 0.27／0.33 px、1024×512） |
 | ライトマップ ceil の UV（点光源 three (−19.2, 2.5, 15.2)） | u 0.2526, v 0.8878 | 0.2524, 0.8877（誤差 0.14／0.03 px） |
 | ライトマップ wall の UV（x=25.6 の柱の北面から 0.3 m、高さ 0.6 m） | レイキャストした面の UV：0.5636, 0.8698 | 0.5630, 0.8696（誤差 0.62／0.15 px、1024×1024）。同じ面の 1 m 上は画像の上側（v 0.8543） |

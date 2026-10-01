@@ -1346,15 +1346,39 @@ def set_visibility(h: SceneHandles, *, hide: tuple[str, ...] = (), camera_pos: V
         for c in cols:
             h.col[c].hide_render = key in hide
     h.col['Cap'].hide_render = 'upper' not in hide or 'cap' in hide
+    def owner(ob: bpy.types.Object) -> bpy.types.Object:
+        """
+        判定に使う 1 体の基準。歩行者（walkers）は手足が別ノードで動くので、人物のルートノード（walkers の子）。
+        インスタンス配置の人物・樹木は部品オブジェクトごとに人物の原点を持つ（親は材質別のインスタンサー）ので、部品そのもの
+        """
+        chain = []
+        p = ob.parent
+        while p is not None:
+            chain.append(p)
+            p = p.parent
+        names = [c.name for c in chain]
+        if 'walkers' in names and names.index('walkers') >= 1:
+            return chain[names.index('walkers') - 1]
+        return ob
+
     def hide_near(objs, radius: float, label: str) -> None:
-        n = 0
+        """1 体ごとに基準の原点で判定して、部品をまとめて隠す（部品ごとだと歩行者の手足だけが消える）"""
+        groups: dict[str, list[bpy.types.Object]] = {}
+        heads: dict[str, bpy.types.Object] = {}
         for ob in objs:
-            t = ob.matrix_world.translation
-            ob.hide_render = (camera_pos is not None and radius > 0 and abs(t.z - camera_pos.z) < 8.0
-                              and math.hypot(t.x - camera_pos.x, t.y - camera_pos.y) < radius)
-            n += ob.hide_render
+            o = owner(ob)
+            groups.setdefault(o.name, []).append(ob)
+            heads[o.name] = o
+        n = 0
+        for key, parts in groups.items():
+            t = heads[key].matrix_world.translation
+            hide = (camera_pos is not None and radius > 0 and abs(t.z - camera_pos.z) < 8.0
+                    and math.hypot(t.x - camera_pos.x, t.y - camera_pos.y) < radius)
+            for ob in parts:
+                ob.hide_render = hide
+            n += hide
         if n:
-            log(f'カメラから {radius} m 以内の{label}の部品 {n} 個を非表示')
+            log(f'カメラから {radius} m 以内の{label}を {n} 件非表示（歩行者は 1 人単位、ほかは部品単位）')
 
     people = [o for o in h.col['F2_people'].objects if o.type == 'MESH']
     seated = {o.name for o in people if o.parent and o.parent.name.startswith('person.sit')}

@@ -115,9 +115,19 @@ const AO_BY_MODE: Record<Mode, AOParams> = {
 // Blender（Cycles）レンダーのギャラリーと 360° ビューア
 const pano = new PanoViewer($('#app'), RENDERS.filter((r) => r.kind === 'pano'), renderer);
 const gallery = new Gallery($('#app'), RENDERS, {
-  goPreset: (name) => {
-    const p = PRESETS.find((q) => q.name === name);
-    if (p) goPreset(p);
+  // 「3Dでこの視点へ」：プリセットへ移動し、レンダーの時刻に合わせる。パノラマは撮影位置・向きに立つ
+  goPreset: (it) => {
+    const p = PRESETS.find((q) => q.name === it.preset);
+    if (!p) return;
+    goPreset(p);
+    if (it.kind === 'pano' && it.pos && it.heading !== undefined) {
+      if (mode !== 'walk') setMode('walk', true);
+      walk.place(it.pos[0], it.pos[2], THREE.MathUtils.degToRad(it.heading), -0.05);
+    }
+    if (it.sunHours !== undefined) {
+      $<HTMLInputElement>('#time').value = String(it.sunHours);
+      setSun(it.sunHours);
+    }
   },
   openPano: (it) => pano.open(it),
 });
@@ -216,16 +226,25 @@ function setQuality(q: Quality): void {
 // ------------------------------------------------------------
 // 日照
 // ------------------------------------------------------------
+/** 「影を表示」の設定（日没後は設定にかかわらず影を描かない） */
+let shadowsWanted = true;
+
 function setSun(hours: number): void {
   const { azimuth, elevation } = sunPosition(jst(2026, 9, 28, hours));
   const az = THREE.MathUtils.degToRad(azimuth);
-  const el = THREE.MathUtils.degToRad(Math.max(elevation, 2));
-  const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
-  lighting.setSun(dir);
-  sun.position.copy(dir.multiplyScalar(150));
+  const dirAt = (deg: number) => {
+    const el = THREE.MathUtils.degToRad(deg);
+    return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+  };
+  // 空は実際の高度で（日没後は太陽が地平線の下へ沈み、空が暮れる）。平行光は地面の下から照らさないよう 2° で止める
+  lighting.setSun(dirAt(Math.max(elevation, -6)));
+  sun.position.copy(dirAt(Math.max(elevation, 2)).multiplyScalar(150));
   sun.target.position.set(0, 0, 0);
   const k = THREE.MathUtils.clamp(elevation / 25, 0, 1);
-  sun.intensity = 0.4 + 2.2 * k;
+  // 日没（高度 0°）前後で直射光を消す
+  const day = THREE.MathUtils.smoothstep(elevation, -3, 1);
+  sun.intensity = (0.4 + 2.2 * k) * day;
+  sun.castShadow = shadowsWanted && elevation > -1;
   lightmaps.setSun(k, elevation);
   lighting.setDaylight(lightmaps.ambientDaylight);
   sun.color.setHSL(0.08, 0.6 - 0.45 * k, 0.72 + 0.2 * k);
@@ -334,7 +353,9 @@ function setMode(m: Mode, instant = false): void {
       flyTo(new THREE.Vector3(40, 58, 72).multiplyScalar(fitScale()), new THREE.Vector3(0, 0, 0), instant);
     } else {
       orbit.maxPolarAngle = Math.PI * 0.52;
-      flyTo(new THREE.Vector3(62, 12, 92), new THREE.Vector3(2, 9, 4), instant);
+      // 縦長画面では俯瞰と同じく引く
+      const t = new THREE.Vector3(2, 9, 4);
+      flyTo(new THREE.Vector3(62, 12, 92).sub(t).multiplyScalar(fitScale()).add(t), t, instant);
     }
   }
   post.setCamera(camera);
@@ -403,7 +424,8 @@ function goPreset(p: Preset): void {
   } else if (p.pos && p.target) {
     const t = new THREE.Vector3(...p.target);
     const pos = new THREE.Vector3(...p.pos);
-    if (p.mode === 'orbit') pos.sub(t).multiplyScalar(fitScale()).add(t);
+    // 縦長画面では引く（外観は遠景のプリセットだけ。歩道・バルコニーの近景は街区や樹木に入り込むのでそのまま）
+    if (p.mode === 'orbit' || (p.mode === 'exterior' && pos.distanceTo(t) > 40)) pos.sub(t).multiplyScalar(fitScale()).add(t);
     flyTo(pos, t);
   }
 }
@@ -494,8 +516,8 @@ function buildPanel(): void {
   time.oninput = () => setSun(parseFloat(time.value));
   const sh = $<HTMLInputElement>('#shadows');
   sh.onchange = () => {
-    sun.castShadow = sh.checked;
-    renderer.shadowMap.needsUpdate = true;
+    shadowsWanted = sh.checked;
+    setSun(parseFloat(time.value));
   };
 
   document.querySelectorAll<HTMLButtonElement>('#modes button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode as Mode)));
@@ -776,7 +798,8 @@ function loop(): void {
     if (fly.t >= 1) fly = null;
   }
   if (world.layers.people.visible) world.walkers.update(dt);
-  if (mode === 'walk') walk.update(dt);
+  // ギャラリー表示中は ←/→ などのキーで裏の歩行カメラを動かさない
+  if (mode === 'walk' && !gallery.isOpen) walk.update(dt);
   else if (mode === 'plan') planCtl.update();
   else orbit.update();
   clearance.update(persp.position, mode === 'exterior');
@@ -833,7 +856,10 @@ window.addEventListener('resize', onResize);
   presets: () => PRESETS.map((p) => p.name),
   toggle: (k: string, v: boolean) => {
     const t = toggles[k];
-    if (!t) return;
+    if (!t) {
+      console.warn(`__app.toggle: 不明なキー ${k}（使えるキー: ${Object.keys(toggles).join(', ')}）`);
+      return;
+    }
     t.on = v;
     if (t.input) t.input.checked = v;
     t.apply(v);
@@ -851,7 +877,14 @@ window.addEventListener('resize', onResize);
   /** Blender 連携：scene.glb と meta.json をダウンロード（scripts/export-scene.mjs から呼ぶ） */
   exportScene: async () => {
     const ex = await import('./export');
-    const glb = await lightmaps.withBaseMaterials(() => ex.exportGLB(world));
+    // 歩行者は初期位置（固定シード）に戻して止める。書き出すたびに人物の位置が変わらないように
+    const prev = world.walkers.rewind();
+    let glb: ArrayBuffer;
+    try {
+      glb = await lightmaps.withBaseMaterials(() => ex.exportGLB(world));
+    } finally {
+      world.walkers.resume(prev);
+    }
     ex.download(glb, 'scene.glb', 'model/gltf-binary');
     ex.download(JSON.stringify(ex.exportMeta(world), null, 1), 'meta.json', 'application/json');
     return glb.byteLength;

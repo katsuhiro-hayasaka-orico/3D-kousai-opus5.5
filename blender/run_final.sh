@@ -10,6 +10,13 @@ cd "$(dirname "$0")/.."
 PY=.venv-blender/bin/python
 mkdir -p blender/out
 what="${1:-all}"
+case "$what" in
+  all | bake | render | resume) ;;
+  *)
+    echo "usage: $0 [all|bake|render|resume]" >&2
+    exit 2
+    ;;
+esac
 
 step() {
   local name="$1"

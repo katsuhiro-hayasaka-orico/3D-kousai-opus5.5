@@ -10,7 +10,7 @@ import { debugLightmap } from './lmdebug';
  *
  * 契約（docs/GRAPHICS-PIPELINE.md §3）：
  *  - src/assets/baked/lightmaps.json の hash が world.lightmap.hash と一致するときだけ使う
- *  - 画像は uv1（channel 1）・flipY=false・sRGB 8bit。画素値 × scale = Blender の Diffuse 照度パス
+ *  - 画像は uv1（channel 1）・flipY=false・sRGB 8bit。画素値 × scale = Blender の Diffuse ライトパス値（白い拡散面の輝度。照度 E = π × 値）
  *  - three の lightMap は放射照度扱い（BRDF_Lambert で 1/π）なので lightMapIntensity = scale × π × gain × (1 + SUN_BOUNCE × sun)
  *
  * gain は「自動露出 × 利用者の倍率（スライダー）」。ベイク値は Blender の物理単位（室内なので暗い）で、
@@ -142,9 +142,9 @@ const BAKE_SKY = skyVertical(BAKE_SKY_ELEVATION);
 
 /**
  * 室内の環境光（IBL・半球光）の内訳。室内 HDR の位置（IT 南・中央）の机上照度
- * （blender/README.md §5.1：室内照明のみ 741 lx、＋天空光 915 lx、＋日射 1,595 lx。HDR は日射ありの 10:30）から。
+ * （blender/README.md §5.1 の IT南 中央 机上：室内照明のみ 740 lx、＋天空光 800 lx、＋日射 1,576 lx。HDR は日射ありの 10:30）から。
  */
-const AMBIENT_SPLIT = { led: 0.46, sky: 0.11, sun: 0.43 };
+const AMBIENT_SPLIT = { led: 0.47, sky: 0.04, sun: 0.49 };
 
 /** 環境光の残し具合（0 = ベイクのみ）。全ライトマップ用マテリアルで共有 */
 const ambientKeep = { value: 0.12 };

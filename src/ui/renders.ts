@@ -17,6 +17,9 @@ export interface RenderEntry {
   seconds?: number;
   sunHours?: number;
   note?: string;
+  /** パノラマの撮影位置（three.js 座標）と向き（北から時計回りの度） */
+  pos?: [number, number, number];
+  heading?: number;
 }
 
 /** 画像 URL を解決済みのエントリ */
@@ -45,13 +48,16 @@ export function renderInfo(e: RenderEntry): string {
   const parts = ['Blender Cycles'];
   if (e.samples) parts.push(`${e.samples} サンプル`);
   if (e.seconds) {
-    const m = Math.floor(e.seconds / 60);
-    const s = Math.round(e.seconds % 60);
+    // 先に秒へ丸めてから分ける（59.5 秒以上を「N分60秒」にしない）
+    const total = Math.round(e.seconds);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
     parts.push(m ? `${m}分${String(s).padStart(2, '0')}秒` : `${s}秒`);
   }
   if (e.sunHours !== undefined) {
-    const h = Math.floor(e.sunHours);
-    const mi = Math.round((e.sunHours - h) * 60);
+    const tm = Math.round(e.sunHours * 60);
+    const h = Math.floor(tm / 60);
+    const mi = tm % 60;
     parts.push(`日照 ${h}:${String(mi).padStart(2, '0')}`);
   }
   if (e.w && e.h) parts.push(`${e.w}×${e.h}`);

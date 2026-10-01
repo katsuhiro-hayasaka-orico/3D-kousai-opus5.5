@@ -14,7 +14,7 @@ export class Gallery {
   constructor(
     parent: HTMLElement,
     private items: RenderItem[],
-    private hooks: { goPreset: (name: string) => void; openPano: (item: RenderItem) => void },
+    private hooks: { goPreset: (item: RenderItem) => void; openPano: (item: RenderItem) => void },
   ) {
     this.el = document.createElement('div');
     this.el.id = 'gallery';
@@ -84,7 +84,7 @@ export class Gallery {
         if (!it) return;
         if (b.dataset.act === 'back') return this.showGrid();
         this.close();
-        if (b.dataset.act === 'preset' && it.preset) this.hooks.goPreset(it.preset);
+        if (b.dataset.act === 'preset' && it.preset) this.hooks.goPreset(it);
         if (b.dataset.act === 'pano') this.hooks.openPano(it);
       };
     });
@@ -96,13 +96,23 @@ export class Gallery {
     });
   }
 
+  /** 表示中か（表示中はウォークスルーのキー操作で裏のカメラを動かさない） */
+  get isOpen(): boolean {
+    return !this.el.hidden;
+  }
+
   open(): void {
     this.el.hidden = false;
+    this.loadThumbs();
+    this.showGrid();
+  }
+
+  /** サムネイルは開いたときに初めて読み込む（一覧へ戻ったときのために show からも呼ぶ） */
+  private loadThumbs(): void {
     this.grid.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((im) => {
       im.src = im.dataset.src!;
       im.removeAttribute('data-src');
     });
-    this.showGrid();
   }
 
   close(): void {
@@ -120,6 +130,7 @@ export class Gallery {
     const it = this.items[i];
     if (!it) return;
     this.el.hidden = false;
+    this.loadThumbs();
     this.index = i;
     this.view.hidden = false;
     this.img.src = it.url;

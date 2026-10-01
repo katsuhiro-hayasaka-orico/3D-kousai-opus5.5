@@ -52,8 +52,8 @@
 - **v は画像の上端 = 0**（北が上の平面図になる）。Blender の glTF インポータは v を反転するので、
   Blender で `UVMap.001` にベイクした画像を**そのまま**書き出せばよい。three.js 側は `flipY = false` で読む。
 - 対象外の面（床材に含まれる段板の側面、壁の上下面など）は各アトラスの**予約ブロック**の中心に縮退している。
-  ベイク後、予約ブロック（`meta.json` の `atlases.*.dummy` = [x, y, size] px、左上原点）を周辺の中央値で塗りつぶす。
-- **焼き込む光**：Diffuse の Direct+Indirect（Color なし）＝照度。天井 LED（発光面）＋天空光（Nishita、太陽ディスクなし）。
+  ベイク後、予約ブロック（`meta.json` の `lightmap.atlases.*.dummy` = [x, y, size] px、左上原点）を周辺の中央値で塗りつぶす。
+- **焼き込む光**：Diffuse の Direct+Indirect（Color なし）＝白い拡散面の輝度（照度 E = π × 値）。天井 LED（発光面）＋天空光（Nishita、太陽ディスクなし）。
   **太陽の直達光は焼かない**（ブラウザ側の時刻スライダーでリアルタイムに与えるため）。
 - 家具・人物・上階スラブはベイク時も遮蔽物として存在させる（机の下の接地影、天井の閉鎖）。
 - 出力：`src/assets/baked/lm_<atlas>.webp`（または .jpg）8bit sRGB と `lightmaps.json`：
@@ -62,7 +62,7 @@
     "hash": "<meta.json の lightmap.hash と同じ値>",
     "atlases": { "floor": { "file": "lm_floor.webp", "w": 4096, "h": 2048, "scale": 3.2 } , "ceil": {}, "wall": {} },
     "encoding": "srgb8",
-    "bake": { "blender": "4.5.14", "samples": 256, "seconds": 0, "denoise": "OIDN" }
+    "bake": { "blender": "4.5.14", "samples": 128, "seconds": 11070, "denoise": "OIDN", "atlases": { "floor": { "samples": 128, "quality": "final", "stats": {} } } }
   }
   ```
   画素値 p（sRGB をデコードした線形 0〜1）× `scale` = Blender の Diffuse ライトパス値。
@@ -107,7 +107,7 @@
 - 画質プリセット：高（MSAA＋GTAO＋Bloom＋SMAA）／標準（Bloom＋SMAA）／軽量（ポストなし）。モバイルは標準が既定。
   トーンマッピングは Neutral（OutputPass）。単色背景は、トーンマッピング後に指定色になるよう逆算した色を使う。
 - ライトマップはシェーダーで LED 成分と天空成分に分け、時刻スライダーに応じて天空成分だけを減らす（夕方・夜）。
-  室内の IBL・半球光も机上照度の内訳（`AMBIENT_SPLIT`：LED 0.46・天空 0.11・日射 0.43）で同様に減らす。
+  室内の IBL・半球光も机上照度の内訳（`AMBIENT_SPLIT`：LED 0.47・天空 0.04・日射 0.49。blender/README.md §5.1 の IT南 中央 机上 740／800／1,576 lx から）で同様に減らす。
   太陽の直達光は DirectionalLight＋シャドウマップでリアルタイムに与える。
 - 外観では建物の外接箱の 27 点へカメラから引いた線分に当たる街区を隠す（Blender の撮影と同じ判定、`gfx/clearance.ts`）。
 - アセットがなくても従来どおり動作する（すべて任意読み込み）。

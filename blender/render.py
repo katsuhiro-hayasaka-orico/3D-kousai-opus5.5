@@ -195,6 +195,13 @@ def full_size(s: Shot) -> tuple[int, int]:
     return PANO_SIZE if s.kind == 'pano' else STILL_SIZE
 
 
+def preset_size(s: Shot, q: dict) -> tuple[int, int]:
+    """品質プリセットの既定の解像度（setup_shot と同じ丸め）"""
+    w, hh = full_size(s)
+    rs = q['pano_scale'] if s.kind == 'pano' else q['scale']
+    return max(16, round(w * rs)), max(8, round(hh * rs))
+
+
 def save_outputs(png: Path, s: Shot, original: bool) -> dict:
     """PNG → Web 用の縮小 JPEG と 480 px 幅のサムネイル。original=True なら原寸 JPEG q92 を docs/renders/ にも保存"""
     from PIL import Image
@@ -225,8 +232,19 @@ def resave(shots: list[Shot]) -> None:
         if s.id not in cur or not png.exists():
             C.log(f'{s.id}: PNG または renders.json の項目がないので飛ばす')
             continue
-        e = {k: v for k, v in cur[s.id].items() if k not in ('webW', 'webH', 'original')}
-        e.update(save_outputs(png, s, original=e.get('quality') == 'final' and (e.get('w'), e.get('h')) == full_size(s)))
+        from PIL import Image
+
+        with Image.open(png) as im:
+            size = im.size
+        if size != (cur[s.id].get('w'), cur[s.id].get('h')):
+            # renders.json だけ git で戻した後などは、中間 PNG が別のレンダーのものになっている
+            C.log(f'{s.id}: 中間 PNG の寸法 {size} が renders.json の {cur[s.id].get("w")}×{cur[s.id].get("h")} と違うので飛ばす')
+            continue
+        e = dict(cur[s.id])
+        new = save_outputs(png, s, original=e.get('quality') == 'final' and size == full_size(s))
+        if 'original' not in new:
+            e.pop('original', None)
+        e.update(new)  # 既存のキーの並びは保つ
         entries.append(e)
         C.log(f'{s.id}: 保存し直し → {e["file"]}（{e["webW"]}×{e["webH"]}）')
     if entries:
@@ -265,8 +283,12 @@ def main() -> None:
         ids = [s.id for s in SHOTS]
     elif args.shots == 'remaining':
         path = C.RENDERS_DIR / 'renders.json'
+        q = QUALITY[args.quality]
+        by_id = {s.id: s for s in SHOTS}
+        # その品質の既定の解像度で描き終えたものだけを済みとする
         done = {e['id'] for e in json.loads(path.read_text(encoding='utf-8'))
-                if e.get('quality') == args.quality} if path.exists() else set()
+                if e.get('quality') == args.quality and e['id'] in by_id
+                and (e.get('w'), e.get('h')) == preset_size(by_id[e['id']], q)} if path.exists() else set()
         ids = [s.id for s in SHOTS if s.id not in done]
         C.log(f'残り {len(ids)} ショット（{args.quality} 済み {len(done)}）: {",".join(ids)}')
         if not ids:
@@ -283,16 +305,25 @@ def main() -> None:
     # 同じバリアント・表示状態を続けて描くと永続データ（BVH）を使い回せる
     shots.sort(key=lambda s: (s.variant, s.hide, s.kind))
     q = QUALITY[args.quality]
+    # 試し描き：解像度の倍率やサンプル数を品質プリセットから変えたもの。同梱画像・renders.json・原寸は更新しない
+    trial = args.scale != 1.0 or (args.samples is not None
+                                  and any(args.samples != (q['pano_samples'] if s.kind == 'pano' else q['samples'])
+                                          for s in shots))
+    if trial:
+        C.log('試し描き（--scale／--samples がプリセットと違う）：blender/out/renders/trial/ に PNG だけを書く')
     h = C.build_scene(variant=shots[0].variant)
     png_dir = C.ensure_dir(C.OUT / 'renders')
     t_all = time.time()
     for s in shots:
         samples = args.samples or (q['pano_samples'] if s.kind == 'pano' else q['samples'])
         info = setup_shot(h, s, q, samples, args.scale)
-        png = png_dir / f'{s.id}.png'
+        png = C.ensure_dir(png_dir / 'trial') / f'{s.id}.png' if trial else png_dir / f'{s.id}.png'
         C.log(f'{s.id}: {info["w"]}×{info["h"]}、{samples} spp、{s.variant}、EV {s.ev:+.1f} …')
         sec = C.render_to(png)
-        # 原寸（docs/renders/）は final を原寸で描いたときだけ。試し描き（--scale）で上書きしない
+        if trial:
+            C.log(f'{s.id}: {sec:.1f}s → {png}（試し描き）')
+            continue
+        # 原寸（docs/renders/）は final を原寸で描いたときだけ
         saved = save_outputs(png, s, original=args.quality == 'final' and (info['w'], info['h']) == full_size(s))
         file = saved['file']
         entry = {
@@ -302,9 +333,9 @@ def main() -> None:
             'sunHours': h.meta['sun'][C.VARIANTS[s.variant]['sun']]['hours'], 'note': s.note,
             'variant': s.variant, 'ev': s.ev, 'quality': args.quality, **info,
         }
-        path = update_json([entry])
+        update_json([entry])
         C.log(f'{s.id}: {sec:.1f}s → {file}')
-    C.log(f'全 {len(shots)} ショット {time.time() - t_all:.0f}s → {path}')
+    C.log(f'全 {len(shots)} ショット {time.time() - t_all:.0f}s' + ('（試し描き）' if trial else f' → {C.RENDERS_DIR / "renders.json"}'))
 
 
 if __name__ == '__main__':

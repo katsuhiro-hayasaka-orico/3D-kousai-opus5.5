@@ -126,6 +126,10 @@ function makeFigure(rng: Rng): { root: THREE.Group; legs: THREE.Object3D[]; arms
 export class Walkers {
   group = new THREE.Group();
   private list: Walker[] = [];
+  /** 固定シードで決めた初期の進行度（書き出しを毎回同じにするため） */
+  private initial: number[] = [];
+  /** true の間は update で進めない（書き出し中） */
+  paused = false;
 
   constructor(seed = 7) {
     this.group.name = 'walkers';
@@ -146,6 +150,23 @@ export class Walkers {
       this.group.add(f.root);
       this.list.push(w);
     }
+    this.initial = this.list.map((w) => w.s);
+    this.update(0);
+  }
+
+  /** 止めて初期位置へ戻す（Blender への書き出し用）。戻す前の進行度を返す */
+  rewind(): number[] {
+    const prev = this.list.map((w) => w.s);
+    this.list.forEach((w, i) => (w.s = this.initial[i]));
+    this.update(0);
+    this.paused = true;
+    return prev;
+  }
+
+  /** rewind の前の状態に戻して再開する */
+  resume(prev: number[]): void {
+    this.list.forEach((w, i) => (w.s = prev[i] ?? w.s));
+    this.paused = false;
     this.update(0);
   }
 
@@ -154,6 +175,7 @@ export class Walkers {
   }
 
   update(dt: number): void {
+    if (this.paused) return;
     for (const w of this.list) {
       w.s = (w.s + dt * w.speed) % w.total;
       let s = w.s;

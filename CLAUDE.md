@@ -25,7 +25,7 @@ node scripts/shoot.mjs http://localhost:5173/ shots '[{"eval":"__app.goPreset(\"
 ```
 
 - Chromium は `CHROME_PATH`、未指定なら `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`（SwiftShader でソフトウェア WebGL。初回ロードは約 10 秒）。
-- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`toggle(レイヤー, bool)`、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`view(pos, target)`（外観・俯瞰のカメラを任意位置へ）、`gfx()`、`exportScene()`。
+- `window.__app`（`src/main.ts` 末尾）が撮影・書き出し用のフック：`setMode`、`goPreset(名前)`、`presets()`、`toggle(キー, bool)`（キーは UI の表示レイヤー：furniture / people / labels / ceiling / zones / ac / wifi / evac / grid / context / upper / gi。LayerKey ではない。外構は context、上階・周辺は upper）、`setSun(時)`、`setQuality('high'|'standard'|'low')`、`setGIGain`、`debugView`、`openGallery`／`openPano`／`closePano`、`stats()`、`info()`（renderer.info）、`pick`、`lightmapInfo()`、`cityHidden()`、`view(pos, target)`（外観・俯瞰のカメラを任意位置へ）、`gfx()`、`exportScene()`。
 - 撮影結果は Read ツールで画像を見て確認する（`shots/` は gitignore 済み）。Blender のベイク・レンダー中は CPU が埋まるので、`nice` を付け、`W=1100 H=680` 程度に小さくして撮る。
 - URL に `?lmdebug=1` を付けると、ライトマップの代わりに UV 検証用の合成画像（室の輪郭・グリッド・壁面の向き）を貼る。
 
@@ -56,7 +56,7 @@ three.js 座標は **x = 東、y = 上、z = 南（北は -z）**、単位は m�
   - 静的物は `buildStatic` で**マテリアルごとに 1 メッシュへマージ**する。
   - 家具・人物は `Instancer`（`instancer.ts`）でプロトタイプをマテリアル単位にマージし、InstancedMesh にする（1 プロト × 1 マテリアル = 1 ドローコール）。
 - マテリアルは `materials.ts` のキー（`M('floor.carpetIT')` など）で共有する。`userData.tintable` のマテリアルは instanceColor で色替えし（人物の肌・髪・服、葉）、`defaultTint` を持つ。
-- **テクスチャはすべて Canvas で手続き生成**（`textures.ts`：床材・画面・サイン・ロッカー面など）。外部画像に依存しないため、単一 HTML で完結する。
+- **マテリアルのテクスチャは Canvas で手続き生成**（`textures.ts`：床材・画面・サイン・ロッカー面・周辺街区の外装など）。Blender の生成物（`src/assets/baked/` のライトマップ・HDR、`src/assets/renders/` の JPEG）は `import.meta.glob` で読み込む。単一 HTML になるのは standalone ビルド（`vite.config.ts` の viteSingleFile と assetsInlineLimit）が data URI で埋め込むため。
 - プロトタイプの向きの規約：**人と椅子はローカル -z を向き（背もたれは +z）、画面・機器・収納の正面は +z**。机に対する席の配置は `Layout.deskSeat` / `island` / `tf()` を参照。
 - 乱数は `Rng`（固定シード）のみを使う。在席・小物・服の色は毎回同じになる。
 - ピック情報は Instancer の各インスタンスの `pick` に持たせ、`Instancer.pickOf` で引く。歩行モードの衝突は壁線分（`wallColliders`）＋家具・柱の AABB（`layout.obstacles`）で判定する。
@@ -82,7 +82,7 @@ three.js 座標は **x = 東、y = 上、z = 南（北は -z）**、単位は m�
   .venv-blender/bin/python blender/bake_lightmaps.py --quality preview     # ライトマップ＋室内 HDR（数分）
   .venv-blender/bin/python blender/render.py --shots it-south,soc --quality preview   # --list で一覧
   .venv-blender/bin/python blender/render.py --resave                      # 中間 PNG から JPEG を作り直す
-  bash blender/run_final.sh [all|bake|render]                              # 最終品質（数時間。ログは blender/out/）
+  bash blender/run_final.sh [all|bake|render|resume]                       # 最終品質（数時間。resume は未完成のショットだけ。ログは blender/out/）
   ```
   詳細（照明の校正、材質規則、所要時間）は `blender/README.md`。
 

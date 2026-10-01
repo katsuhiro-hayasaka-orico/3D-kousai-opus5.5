@@ -403,6 +403,19 @@ def main() -> None:
                     '照度 E = π × 値。値 1.0 ≒ 1,000 cd/m²（照度 π×1,000 lx）')
     bake_info = doc.setdefault('bake', {})
 
+    def summarize() -> None:
+        """アトラスごとの記録から最上位の quality と bake の要約を作り直す（途中で中断しても表示が食い違わないよう毎回）"""
+        per = bake_info.get('atlases', {})
+        doc['quality'] = 'final' if per and all(v['quality'] == 'final' for v in per.values()) else 'preview'
+        bake_info.update({
+            'blender': bpy.app.version_string.split()[0],
+            'samples': max((v['samples'] for v in per.values()), default=samples),
+            'seconds': round(sum(v['seconds'] for v in per.values()), 1),
+            'denoise': 'OIDN',
+            'world': 'Nishita 天空（10:30 の分布、太陽ディスクなし）＋室内照明。太陽ランプなし。周辺街区（概略の箱）は天空光を遮る',
+            'ledRadiance': C.LED_RADIANCE,
+        })
+
     if not args.env_only:
         for atlas in [a for a in args.atlases.split(',') if a]:
             if atlas not in ATLAS_NAMES:
@@ -413,17 +426,9 @@ def main() -> None:
                 'samples': samples, 'seconds': res.pop('seconds'), 'resolutionScale': scale_res,
                 'quality': args.quality, 'stats': res.pop('stats')}
             doc['atlases'][atlas] = res
+            summarize()
             C.write_json(json_path, doc)
-    per = bake_info.get('atlases', {})
-    doc['quality'] = 'final' if per and all(v['quality'] == 'final' for v in per.values()) else 'preview'
-    bake_info.update({
-        'blender': bpy.app.version_string.split()[0],
-        'samples': max((v['samples'] for v in per.values()), default=samples),
-        'seconds': round(sum(v['seconds'] for v in per.values()), 1),
-        'denoise': 'OIDN',
-        'world': 'Nishita 天空（10:30 の分布、太陽ディスクなし）＋室内照明。太陽ランプなし。周辺街区（概略の箱）は天空光を遮る',
-        'ledRadiance': C.LED_RADIANCE,
-    })
+    summarize()
     if not args.no_env:
         doc['env'] = render_env(h, q['env_samples'] if not args.samples else max(args.samples, 16))
     C.write_json(json_path, doc)
